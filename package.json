@@ -11,5 +11,13 @@
     "npm-run-all2": "^8.0.4",
     "prettier": "^3.8.1",
     "prettier-plugin-organize-imports": "^4.3.0"
+  },
+  "scripts": {
+    "dev:server": "npm run -w server dev",
+    "dev:app": "npm run -w app dev",
+    "dev": "run-p dev:*"
+  },
+  "dependencies": {
+    "mongoose": "^9.1.6"
   }
 }
