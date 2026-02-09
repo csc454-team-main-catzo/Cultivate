@@ -2,6 +2,7 @@ import { serve } from '@hono/node-server'
 import { Hono } from 'hono'
 import { connectDB } from './db.js'
 import { User } from './models/User.js'
+import bountyRoutes from './routes/bounties.js'
 
 const app = new Hono()
 
@@ -29,6 +30,8 @@ app.get('/users', async (c) => {
     return c.json({ error: error.message }, 500)
   }
 })
+
+app.route('/bounties', bountyRoutes) // Mount bounty routes
 
 serve({
   fetch: app.fetch,

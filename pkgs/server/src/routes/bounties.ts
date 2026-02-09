@@ -74,7 +74,7 @@ bounties.post(
       401: { description: "Unauthorized" },
     },
   }),
-  authMiddleware, // TODO: link with authentication middleware
+  authMiddleware,
   validator("json", BountyCreateSchema),
   async (c) => {
     try {
