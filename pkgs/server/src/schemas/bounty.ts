@@ -43,12 +43,6 @@ const PopulatedUserSchema = v.object({
   email: v.string(),
 });
 
-const FarmerResponseItemSchema = v.object({
-  farmer: v.string(),
-  qtyOffered: v.number(),
-  respondedAt: v.string(),
-});
-
 export const BountyResponseSchema = v.object({
   _id: v.string(),
   title: v.string(),
@@ -58,7 +52,6 @@ export const BountyResponseSchema = v.object({
   latLng: v.tuple([v.number(), v.number()]),
   createdBy: PopulatedUserSchema,
   status: v.picklist(["open", "claimed", "fulfilled", "expired"]),
-  responses: v.array(FarmerResponseItemSchema),
   createdAt: v.string(),
   updatedAt: v.string(),
 });

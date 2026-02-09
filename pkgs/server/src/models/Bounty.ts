@@ -1,18 +1,9 @@
 import mongoose, { Schema, Document, Types } from "mongoose";
 
 /**
- * Represents a farmer who has responded to a bounty.
- */
-export interface IFarmerResponse {
-  farmer: Types.ObjectId;
-  qtyOffered: number;
-  respondedAt: Date;
-}
-
-/**
  * Bounty document interface.
  * A bounty is a demand posting by a restaurant for a specific produce item.
- * Farmers can respond to bounties to fulfill the demand.
+ * Farmers respond by creating Offers that reference this bounty.
  */
 export interface IBounty extends Document {
   title: string;
@@ -21,31 +12,10 @@ export interface IBounty extends Document {
   qty: number;
   latLng: [number, number];
   createdBy: Types.ObjectId;
+  status: "open" | "claimed" | "fulfilled" | "expired";
   createdAt: Date;
   updatedAt: Date;
-  status: "open" | "claimed" | "fulfilled" | "expired";
-  responses: IFarmerResponse[];
 }
-
-const FarmerResponseSchema = new Schema<IFarmerResponse>(
-  {
-    farmer: {
-      type: Schema.Types.ObjectId,
-      ref: "User",
-      required: [true, "Farmer reference is required"],
-    },
-    qtyOffered: {
-      type: Number,
-      required: [true, "Quantity offered is required"],
-      min: [1, "Quantity offered must be at least 1"],
-    },
-    respondedAt: {
-      type: Date,
-      default: Date.now,
-    },
-  },
-  { _id: false }
-);
 
 const BountySchema = new Schema<IBounty>(
   {
@@ -99,20 +69,24 @@ const BountySchema = new Schema<IBounty>(
       },
       default: "open",
     },
-    responses: {
-      type: [FarmerResponseSchema],
-      default: [],
-    },
   },
   {
-    timestamps: true, // auto-manages createdAt & updatedAt
+    timestamps: true,
+    toJSON: { virtuals: true },
+    toObject: { virtuals: true },
   }
 );
+
+/* ---------- Virtual: populate offers that reference this bounty ---------- */
+BountySchema.virtual("offers", {
+  ref: "Offer",
+  localField: "_id",
+  foreignField: "bountyId",
+});
 
 /* ---------- Indexes ---------- */
 BountySchema.index({ createdBy: 1 });
 BountySchema.index({ status: 1 });
-BountySchema.index({ latLng: "2dsphere" }); // enables geo-queries for nearby bounties
 BountySchema.index({ item: 1, status: 1 });
 
 const Bounty =
