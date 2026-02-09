@@ -19,9 +19,11 @@ export interface IListing extends Document {
   latLng: [number, number];
   createdBy: Types.ObjectId;
   parentId: Types.ObjectId | null;
+  matchedListingId: Types.ObjectId | null;
   status: "open" | "matched" | "fulfilled" | "expired";
   createdAt: Date;
   updatedAt: Date;
+  expiresAt: Date;
 }
 
 const ListingSchema = new Schema<IListing>(
@@ -86,6 +88,11 @@ const ListingSchema = new Schema<IListing>(
       ref: "Listing",
       default: null,
     },
+    matchedListingId: {
+      type: Schema.Types.ObjectId,
+      ref: "Listing",
+      default: null,
+    },
     status: {
       type: String,
       enum: {
@@ -93,6 +100,10 @@ const ListingSchema = new Schema<IListing>(
         message: "{VALUE} is not a valid listing status",
       },
       default: "open",
+    },
+    expiresAt: {
+      type: Date,
+      default: null,
     },
   },
   {

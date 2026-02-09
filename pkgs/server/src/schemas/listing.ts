@@ -35,6 +35,7 @@ export const ListingCreateSchema = v.object({
     v.transform((val) => val as [number, number])
   ),
   parentId: v.optional(v.pipe(v.string(), v.minLength(1))),
+  expiresAt: v.optional(v.string("expiresAt must be an ISO date string")),
 });
 
 export type ListingCreateInput = v.InferOutput<typeof ListingCreateSchema>;
@@ -58,9 +59,11 @@ export const ListingResponseSchema = v.object({
   latLng: v.tuple([v.number(), v.number()]),
   createdBy: PopulatedUserSchema,
   parentId: v.nullable(v.string()),
+  matchedListingId: v.nullable(v.string()),
   status: v.picklist(["open", "matched", "fulfilled", "expired"]),
   createdAt: v.string(),
   updatedAt: v.string(),
+  expiresAt: v.nullable(v.string()),
 });
 
 export const ListingListResponseSchema = v.array(ListingResponseSchema);
