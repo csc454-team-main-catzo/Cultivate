@@ -1,7 +1,9 @@
 import { serve } from '@hono/node-server'
 import { Hono } from 'hono'
+import { openAPIRouteHandler } from 'hono-openapi'
 import { connectDB } from './db.js'
 import { User } from './models/User.js'
+import bountyRoutes from './routes/bounties.js'
 
 const app = new Hono()
 
@@ -29,6 +31,20 @@ app.get('/users', async (c) => {
     return c.json({ error: error.message }, 500)
   }
 })
+
+// Mount bounty routes
+app.route('/bounties', bountyRoutes)
+
+// OpenAPI spec endpoint
+app.get('/openapi', openAPIRouteHandler(app, {
+  documentation: {
+    info: {
+      title: 'Cultivate API',
+      version: '1.0.0',
+      description: 'API for connecting restaurants and farmers',
+    },
+  },
+}))
 
 serve({
   fetch: app.fetch,
