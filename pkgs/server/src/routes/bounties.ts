@@ -101,4 +101,46 @@ bounties.post(
   }
 );
 
+/* ------------------------------------------------------------------ */
+/*  GET /bounties/:id — public, single bounty with offers populated   */
+/* ------------------------------------------------------------------ */
+bounties.get(
+  "/:id",
+  describeRoute({
+    description: "Get a single bounty with its offers",
+    tags: ["Bounties"],
+    responses: {
+      200: {
+        description: "Bounty with populated offers",
+        content: {
+          "application/json": {
+            schema: resolver(BountyResponseSchema),
+          },
+        },
+      },
+      404: { description: "Bounty not found" },
+    },
+  }),
+  async (c) => {
+    try {
+      const bounty = await Bounty.findById(c.req.param("id"))
+        .populate("createdBy", "name email")
+        .populate({
+          path: "offers",
+          populate: { path: "createdBy", select: "name email" },
+        })
+        .lean();
+
+      if (!bounty) {
+        return c.json({ error: "Bounty not found" }, 404);
+      }
+
+      return c.json(bounty, 200);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Unknown error";
+      return c.json({ error: message }, 500);
+    }
+  }
+);
+
 export default bounties;
