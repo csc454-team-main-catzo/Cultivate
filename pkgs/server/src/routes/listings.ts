@@ -126,6 +126,10 @@ listings.post(
   validator("json", ListingCreateSchema),
   async (c) => {
     try {
+      // WORKAROUND: hono-openapi's validator registers types differently than
+      // Hono's built-in validator, causing a type mismatch on c.req.valid().
+      // The `as never` cast silences TS; runtime validation is handled by the
+      // validator("json", ListingCreateSchema) middleware above.
       const data = c.req.valid("json" as never) as ListingCreateInput;
       const userId = c.get("userId");
 
@@ -177,6 +181,7 @@ listings.post(
   async (c) => {
     try {
       const listingId = c.req.param("id");
+      // WORKAROUND: same hono-openapi type mismatch — see note in POST /listings
       const data = c.req.valid("json" as never) as ResponseCreateInput;
       const userId = c.get("userId");
 
