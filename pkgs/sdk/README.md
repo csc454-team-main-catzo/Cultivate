@@ -56,6 +56,9 @@ Class | Method | HTTP request | Description
 *ListingsApi* | [**createListingResponse**](docs/ListingsApi.md#createlistingresponse) | **POST** /listings/{id}/responses | Add a response (farmer offer) to an existing demand listing
 *ListingsApi* | [**getListing**](docs/ListingsApi.md#getlisting) | **GET** /listings/{id} | Get a single listing with its embedded responses
 *ListingsApi* | [**listListings**](docs/ListingsApi.md#listlistings) | **GET** /listings | List all listings. Optional ?type&#x3D;demand|supply filter. Returns creator info populated.
+*UsersApi* | [**getCurrentUser**](docs/UsersApi.md#getcurrentuser) | **GET** /users/me | Return the authenticated user\&#39;s profile
+*UsersApi* | [**listUsers**](docs/UsersApi.md#listusers) | **GET** /users | List registered users (Auth0 IDs omitted)
+*UsersApi* | [**registerUser**](docs/UsersApi.md#registeruser) | **POST** /users/register | Complete Auth0 registration by assigning a role
 
 
 ### Documentation For Models
@@ -69,6 +72,9 @@ Class | Method | HTTP request | Description
  - [ListListings200ResponseInnerCreatedBy](docs/ListListings200ResponseInnerCreatedBy.md)
  - [ListListings200ResponseInnerResponsesInner](docs/ListListings200ResponseInnerResponsesInner.md)
  - [ListListings200ResponseInnerResponsesInnerCreatedBy](docs/ListListings200ResponseInnerResponsesInnerCreatedBy.md)
+ - [ListUsers200ResponseInner](docs/ListUsers200ResponseInner.md)
+ - [RegisterUser201Response](docs/RegisterUser201Response.md)
+ - [RegisterUserRequest](docs/RegisterUserRequest.md)
 
 
 <a id="documentation-for-authorization"></a>
