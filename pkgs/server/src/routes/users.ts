@@ -23,6 +23,7 @@ users.post(
   describeRoute({
     operationId: "registerUser",
     summary: "Complete Auth0 registration by assigning a role",
+    security: [{ bearerAuth: [] }],
     responses: {
       201: {
         description: "Registered user",
@@ -85,6 +86,7 @@ users.get(
   describeRoute({
     operationId: "getCurrentUser",
     summary: "Return the authenticated user's profile",
+    security: [{ bearerAuth: [] }],
     responses: {
       200: {
         description: "Authenticated user",
@@ -121,6 +123,7 @@ users.get(
   describeRoute({
     operationId: "listUsers",
     summary: "List registered users (Auth0 IDs omitted)",
+    security: [{ bearerAuth: [] }],
     responses: {
       200: {
         description: "Array of users",

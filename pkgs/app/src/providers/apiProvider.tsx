@@ -13,15 +13,17 @@ export function ApiProvider({ children }: PropsWithChildren) {
       basePath: CFG.API_URL,
       accessToken: async () => {
         if (isAuthenticated) {
+          console.log("Getting token...")
           return await getAccessTokenSilently({
             authorizationParams: {
               audience: import.meta.env.VITE_AUTH0_AUDIENCE,
             },
           })
         } else {
+          console.error("Not auth'ed, no token to get.")
           // TODO: specific error type for unauthorized bubble up to error boundary
           // which would trigger redirect to login page. Should catch getAccessTokenSilently too
-          throw new Error("something.")
+          throw new Error("Not authenticated.")
         }
       },
     })

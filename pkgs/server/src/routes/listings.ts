@@ -106,6 +106,7 @@ listings.post(
   describeRoute({
     operationId: "createListing",
     summary: "Create a new listing (demand or supply)",
+    security: [{ bearerAuth: [] }],
     responses: {
       201: {
         description: "Listing created successfully",
@@ -159,6 +160,7 @@ listings.post(
     operationId: "createListingResponse",
     summary:
       "Add a response (farmer offer) to an existing demand listing",
+    security: [{ bearerAuth: [] }],
     responses: {
       201: {
         description: "Response added, returns updated listing",

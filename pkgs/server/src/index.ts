@@ -32,6 +32,7 @@ app.get(
   describeRoute({
     operationId: 'healthcheck',
     summary: 'Health check route',
+    security: [{ bearerAuth: [] }, {}],  // bearerAuth or no auth
     responses: {
       200: {
         description: 'Array of listings',
@@ -69,6 +70,15 @@ app.get(
         title: 'Cultivate',
         version: '0.1.0',
         description: 'test',
+      },
+      components: {
+        securitySchemes: {
+          bearerAuth: {
+            type: "http",
+            scheme: "bearer",
+            bearerFormat: "JWT",
+          },
+        },
       },
       servers: [
         {

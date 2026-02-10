@@ -13,6 +13,13 @@ type AuthMiddlewareOptions = {
 };
 
 /**
+ * TODO: It is possible for authMiddleware below to inject in documentation about
+ * the http status codes it can raise, and also the openAPI security info that says
+ * what auth the route uses. This would reduce repetition for the describeRoute
+ * calls on each route handler and ensure the auth code generated in the SDK is accurate.
+ */
+
+/**
  * Auth0 JWT verification middleware
  *
  * This middleware verifies JWT tokens from Authorization: Bearer <token> headers.

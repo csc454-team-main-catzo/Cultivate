@@ -18,6 +18,8 @@ export function AuthButton() {
       </button>
     );
   } else {
+    // TODO: Auth0 doesn't automatically inform us that we are authenticated after
+    // a page refresh. Clicking the button automatically logs us in though.
     return <button onClick={() => loginWithRedirect()}>Login</button>;
   }
 }
