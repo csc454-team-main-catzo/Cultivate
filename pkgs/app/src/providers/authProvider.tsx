@@ -1,5 +1,6 @@
-import React, { ReactNode, useState, useEffect, useCallback } from 'react';
-import { useAuth0, User as Auth0User } from '@auth0/auth0-react';
+import { useState, useEffect, useCallback } from 'react';
+import type { ReactNode } from 'react';
+import { useAuth0 } from '@auth0/auth0-react';
 import { AuthContext, type AuthContextType, type AppUser } from './authContext';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
@@ -18,9 +19,9 @@ async function apiRequest<T>(
 ): Promise<T> {
   const url = `${API_BASE_URL}${endpoint}`;
   
-  const headers: HeadersInit = {
+  const headers: Record<string, string> = {
     'Content-Type': 'application/json',
-    ...options.headers,
+    ...(options.headers as Record<string, string>),
   };
 
   // Add Authorization header if token is provided
@@ -30,7 +31,7 @@ async function apiRequest<T>(
 
   const response = await fetch(url, {
     ...options,
-    headers,
+    headers: headers as HeadersInit,
   });
 
   // Handle non-JSON responses

@@ -19,5 +19,3 @@ mongoose.connection.on('disconnected', () => {
 mongoose.connection.on('error', (error) => {
   console.error('MongoDB error:', error);
 });
-
-export default mongoose;
