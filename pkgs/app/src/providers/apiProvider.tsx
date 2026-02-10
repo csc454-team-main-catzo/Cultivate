@@ -1,18 +1,16 @@
 import type { PropsWithChildren } from 'react'
 import { useMemo } from 'react'
+import { useAuth0 } from '@auth0/auth0-react'
 import { Configuration, DefaultApi, ListingsApi } from 'sdk'
 import { ApiContext } from './apiContext'
-import { useAuth } from './authContext'
 
 export function ApiProvider({ children }: PropsWithChildren) {
-  const { isAuthenticated, getAccessTokenSilently } = useAuth()
+  const { isAuthenticated, getAccessTokenSilently } = useAuth0()
 
-  // Create API configuration with Auth0 token
   const apiConfig = useMemo(() => {
-    const config = new Configuration({
+    return new Configuration({
       basePath: import.meta.env.VITE_API_URL || 'http://localhost:3000',
       accessToken: async () => {
-        // Get Auth0 access token for authenticated requests
         if (isAuthenticated) {
           try {
             return await getAccessTokenSilently({
@@ -28,7 +26,6 @@ export function ApiProvider({ children }: PropsWithChildren) {
         return undefined
       },
     })
-    return config
   }, [isAuthenticated, getAccessTokenSilently])
 
   const misc = useMemo(() => new DefaultApi(apiConfig), [apiConfig])

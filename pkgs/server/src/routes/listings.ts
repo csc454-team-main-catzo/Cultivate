@@ -1,7 +1,6 @@
 import { Hono } from "hono";
 import { describeRoute, resolver, validator } from "hono-openapi";
 import { authMiddleware } from "../middleware/auth.js";
-import type { AuthenticatedContext } from "../middleware/types.js";
 import Listing from "../models/Listing.js";
 import {
   ListingCreateSchema,
@@ -12,7 +11,14 @@ import {
   ListingResponseSchema,
 } from "../schemas/listing.js";
 
-const listings = new Hono<AuthenticatedContext>();
+type Env = {
+  Variables: {
+    userId: string;
+    user: unknown;
+  };
+};
+
+const listings = new Hono<Env>();
 listings.use(describeRoute({
   tags: ['Listings']
 }))

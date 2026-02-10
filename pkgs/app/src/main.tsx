@@ -1,9 +1,9 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
-import { Auth0Provider } from '@auth0/auth0-react'
-import { AuthProvider } from './providers/authProvider'
+import { Auth0Provider, useAuth0 } from '@auth0/auth0-react'
 import './index.css'
 import App from './App.tsx'
+import { UserProvider } from './contexts/userContext'
 import { ApiProvider } from './providers/apiProvider.tsx'
 
 const domain = import.meta.env.VITE_AUTH0_DOMAIN || ''
@@ -24,11 +24,26 @@ createRoot(document.getElementById('root')!).render(
         audience: audience || undefined,
       }}
     >
-      <AuthProvider>
+      <UserProviderWrapper>
         <ApiProvider>
           <App />
         </ApiProvider>
-      </AuthProvider>
+      </UserProviderWrapper>
     </Auth0Provider>
   </StrictMode>,
 )
+
+// Wrapper component to access Auth0 hooks
+function UserProviderWrapper({ children }: { children: React.ReactNode }) {
+  const { user, isAuthenticated, getAccessTokenSilently } = useAuth0()
+  
+  return (
+    <UserProvider
+      auth0User={user}
+      isAuthenticated={isAuthenticated}
+      getAccessTokenSilently={getAccessTokenSilently}
+    >
+      {children}
+    </UserProvider>
+  )
+}
