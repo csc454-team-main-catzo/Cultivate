@@ -1,4 +1,4 @@
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../providers/authContext';
 
 export function UserProfile() {
   const { appUser, user, isLoading, isAppUserLoading } = useAuth();

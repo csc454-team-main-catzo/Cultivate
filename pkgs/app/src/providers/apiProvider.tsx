@@ -2,7 +2,7 @@ import type { PropsWithChildren } from 'react'
 import { useMemo } from 'react'
 import { Configuration, DefaultApi, ListingsApi } from 'sdk'
 import { ApiContext } from './apiContext'
-import { useAuth } from '../contexts/AuthContext'
+import { useAuth } from './authContext'
 
 export function ApiProvider({ children }: PropsWithChildren) {
   const { isAuthenticated, getAccessTokenSilently } = useAuth()
