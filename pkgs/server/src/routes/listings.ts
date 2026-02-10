@@ -19,6 +19,9 @@ type Env = {
 };
 
 const listings = new Hono<Env>();
+listings.use(describeRoute({
+  tags: ['Listings']
+}))
 
 /* ------------------------------------------------------------------ */
 /*  GET /listings — public, list all listings, optional ?type= filter  */
@@ -26,9 +29,9 @@ const listings = new Hono<Env>();
 listings.get(
   "/",
   describeRoute({
-    description:
+    operationId: "listListings",
+    summary:
       "List all listings. Optional ?type=demand|supply filter. Returns creator info populated.",
-    tags: ["Listings"],
     responses: {
       200: {
         description: "Array of listings",
@@ -69,8 +72,8 @@ listings.get(
 listings.get(
   "/:id",
   describeRoute({
-    description: "Get a single listing with its embedded responses",
-    tags: ["Listings"],
+    operationId: "getListing",
+    summary: "Get a single listing with its embedded responses",
     responses: {
       200: {
         description: "Listing with embedded responses",
@@ -107,8 +110,8 @@ listings.get(
 listings.post(
   "/",
   describeRoute({
-    description: "Create a new listing (demand or supply)",
-    tags: ["Listings"],
+    operationId: "createListing",
+    summary: "Create a new listing (demand or supply)",
     responses: {
       201: {
         description: "Listing created successfully",
@@ -159,9 +162,9 @@ listings.post(
 listings.post(
   "/:id/responses",
   describeRoute({
-    description:
+    operationId: "createListingResponse",
+    summary:
       "Add a response (farmer offer) to an existing demand listing",
-    tags: ["Listings"],
     responses: {
       201: {
         description: "Response added, returns updated listing",
