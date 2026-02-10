@@ -4,6 +4,8 @@ import mongoose, { Schema, Document } from 'mongoose';
 export interface IUser extends Document {
   name: string;
   email: string;
+  auth0Id: string; // Auth0 user ID (sub claim from JWT token)
+  role: 'farmer' | 'restaurant';
   createdAt: Date;
 }
 
@@ -20,6 +22,17 @@ const userSchema = new Schema<IUser>({
     unique: true,
     lowercase: true,
     trim: true
+  },
+  auth0Id: {
+    type: String,
+    required: true,
+    unique: true,
+    index: true // Index for faster lookups
+  },
+  role: {
+    type: String,
+    enum: ['farmer', 'restaurant'],
+    required: true
   },
   createdAt: {
     type: Date,
