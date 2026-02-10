@@ -2,7 +2,7 @@ import type { Context, Next } from "hono";
 import { jwtVerify, createRemoteJWKSet } from "jose";
 import { User } from "../models/User.js";
 
-// Auth0 configuration - using environment variables (aligned with @auth0/auth0-hono patterns)
+// Auth0 configuration
 const AUTH0_DOMAIN = process.env.AUTH0_DOMAIN || "";
 const AUTH0_AUDIENCE = process.env.AUTH0_AUDIENCE || "";
 
@@ -19,11 +19,8 @@ const JWKS = AUTH0_DOMAIN
  * Auth0 JWT verification middleware
  * 
  * This middleware verifies JWT tokens from Authorization: Bearer <token> headers.
- * It follows Auth0's recommended approach for API token verification.
- * 
- * Note: While @auth0/auth0-hono is installed, it's designed for session-based
- * web apps. For API token verification (SPA + API architecture), we use
- * direct JWT verification with jose library, following Auth0's official patterns.
+ * It follows Auth0's recommended approach for API token verification using
+ * direct JWT verification with jose library (SPA + API architecture).
  * 
  * Expects: Authorization: Bearer <JWT token>
  * 
