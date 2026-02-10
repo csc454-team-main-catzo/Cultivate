@@ -3,6 +3,7 @@ import { Hono } from 'hono'
 import { openAPIRouteHandler } from 'hono-openapi'
 import { connectDB } from './db.js'
 import { User } from './models/User.js'
+import listingRoutes from './routes/listings.js'
 
 const app = new Hono()
 
@@ -30,6 +31,9 @@ app.get('/users', async (c) => {
     return c.json({ error: error.message }, 500)
   }
 })
+
+// Mount listing routes
+app.route('/listings', listingRoutes)
 
 app.get(
   '/openapi.json',
