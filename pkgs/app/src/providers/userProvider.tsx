@@ -2,19 +2,19 @@ import { useState, useEffect, useCallback } from 'react';
 import type { RegisterUser201Response } from 'sdk';
 import { useApi } from './apiContext';
 import { UserContext } from './userContext'
+import { useAuth0 } from '@auth0/auth0-react';
 
 type AppUser = RegisterUser201Response;
 
 interface UserProviderProps {
   children: React.ReactNode;
-  isAuthenticated: boolean;
 }
 
 export function UserProvider({
-  children,
-  isAuthenticated
+  children
 }: UserProviderProps) {
   const { users } = useApi();
+  const { isAuthenticated } = useAuth0();
   const [appUser, setAppUser] = useState<AppUser | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
