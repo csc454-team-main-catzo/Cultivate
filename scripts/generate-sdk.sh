@@ -47,5 +47,7 @@ npx @openapitools/openapi-generator-cli generate \
   --skip-validate-spec \
   --additional-properties=axiosVersion=1.13.5,supportsES6=true,disallowAdditionalPropertiesIfNotPresent=false,useSingleRequestParameter=true,npmName=sdk,npmVersion=0.0.0
 
+echo "Refreshing SDK build..."
+npm i
 echo "SDK generation complete!"
 exit 0
