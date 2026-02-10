@@ -1,18 +1,38 @@
 import type { PropsWithChildren } from 'react'
+import { useMemo } from 'react'
 import { Configuration, DefaultApi, ListingsApi } from 'sdk'
 import { ApiContext } from './apiContext'
+import { useAuth } from '../contexts/AuthContext'
 
 export function ApiProvider({ children }: PropsWithChildren) {
-  // TODO: seems api is tied to auth flow quite tightly:
-  // 1. attempt to make request i.e. /auth/login
-  // 2. request successful, return i.e. /auth/login triggers side-effect to store token
-  // 3. request fails with 401, goto login with redirect_url set
-  const config = new Configuration({
-    accessToken: undefined,
-    basePath: 'http://localhost:3000',
-  })
-  const misc = new DefaultApi(config)
-  const listings = new ListingsApi(config)
+  const { isAuthenticated, getAccessTokenSilently } = useAuth()
+
+  // Create API configuration with Auth0 token
+  const apiConfig = useMemo(() => {
+    const config = new Configuration({
+      basePath: import.meta.env.VITE_API_URL || 'http://localhost:3000',
+      accessToken: async () => {
+        // Get Auth0 access token for authenticated requests
+        if (isAuthenticated) {
+          try {
+            return await getAccessTokenSilently({
+              authorizationParams: {
+                audience: import.meta.env.VITE_AUTH0_AUDIENCE,
+              },
+            })
+          } catch (error) {
+            console.error('Failed to get access token:', error)
+            return undefined
+          }
+        }
+        return undefined
+      },
+    })
+    return config
+  }, [isAuthenticated, getAccessTokenSilently])
+
+  const misc = useMemo(() => new DefaultApi(apiConfig), [apiConfig])
+  const listings = useMemo(() => new ListingsApi(apiConfig), [apiConfig])
 
   return (
     <ApiContext.Provider value={{ misc, listings }}>
