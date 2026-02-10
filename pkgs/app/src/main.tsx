@@ -4,6 +4,7 @@ import { Auth0Provider } from '@auth0/auth0-react'
 import { AuthProvider } from './contexts/AuthContext'
 import './index.css'
 import App from './App.tsx'
+import { ApiProvider } from './providers/apiProvider.tsx'
 
 const domain = import.meta.env.VITE_AUTH0_DOMAIN || ''
 const clientId = import.meta.env.VITE_AUTH0_CLIENT_ID || ''
@@ -24,7 +25,9 @@ createRoot(document.getElementById('root')!).render(
       }}
     >
       <AuthProvider>
-        <App />
+        <ApiProvider>
+          <App />
+        </ApiProvider>
       </AuthProvider>
     </Auth0Provider>
   </StrictMode>,

@@ -1,17 +1,45 @@
 import { serve } from '@hono/node-server'
 import { Hono } from 'hono'
+import { cors } from 'hono/cors'
+import { describeRoute, resolver, validator } from "hono-openapi"
+import * as v from 'valibot'
+import { openAPIRouteHandler } from 'hono-openapi'
 import { connectDB } from './db.js'
 import { User } from './models/User.js'
 import { authMiddleware } from './middleware/auth.js'
 import listingRoutes from './routes/listings.js'
 
 const app = new Hono()
+app.use(cors({
+  origin: '*',
+}))
 
-await connectDB()
-
-app.get('/', (c) => {
-  return c.json({ message: 'Hello Hono with MongoDB!' })
+const HealthCheckResponse = v.object({
+  healthy: v.boolean(),
+  time: v.date(),
 })
+
+app.get(
+  '/health',
+  describeRoute({
+    operationId: 'healthcheck',
+    summary: 'Health check route',
+    responses: {
+      200: {
+        description: 'Array of listings',
+        content: {
+          'application/json': {
+            schema: resolver(HealthCheckResponse),
+          },
+        },
+      },
+      500: { description: 'Server error' },
+    },
+  }),
+  (c) => {
+    return c.json({ healthy: true, time: new Date().toISOString() })
+  },
+)
 
 // Register a new user (requires Auth0 token + role)
 // This endpoint completes user registration after Auth0 authentication
@@ -89,6 +117,28 @@ app.get('/users', authMiddleware, async (c) => {
 
 // Mount listing routes
 app.route('/listings', listingRoutes)
+
+app.get(
+  '/openapi.json',
+  openAPIRouteHandler(app, {
+    documentation: {
+      info: {
+        title: 'Cultivate',
+        version: '0.1.0',
+        description: 'test',
+      },
+      servers: [
+        {
+          // TODO: get host URL from env var.
+          url: 'http://localhost:3000',
+        },
+      ],
+    },
+    includeEmptyPaths: true,
+  }),
+)
+
+await connectDB()
 
 serve({
   fetch: app.fetch,
