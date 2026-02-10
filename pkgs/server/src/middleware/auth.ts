@@ -1,18 +1,11 @@
 import type { Context, Next } from "hono";
 import { jwtVerify, createRemoteJWKSet } from "jose";
 import { User } from "../models/User.js";
-
-// Auth0 configuration
-const AUTH0_DOMAIN = process.env.AUTH0_DOMAIN || "";
-const AUTH0_AUDIENCE = process.env.AUTH0_AUDIENCE || "";
-
-if (!AUTH0_DOMAIN) {
-  console.warn("Warning: AUTH0_DOMAIN environment variable is not set");
-}
+import CFG from "../config.js";
 
 // Create JWKS client for Auth0 (using jose library, following Auth0 best practices)
-const JWKS = AUTH0_DOMAIN
-  ? createRemoteJWKSet(new URL(`https://${AUTH0_DOMAIN}/.well-known/jwks.json`))
+const JWKS = CFG.AUTH0_DOMAIN
+  ? createRemoteJWKSet(new URL(`https://${CFG.AUTH0_DOMAIN}/.well-known/jwks.json`))
   : null;
 
 type AuthMiddlewareOptions = {
@@ -67,7 +60,7 @@ export const authMiddleware = (options: AuthMiddlewareOptions = {}) => {
       return c.json({ error: "Token is required" }, 401);
     }
 
-    if (!JWKS || !AUTH0_DOMAIN) {
+    if (!JWKS || !CFG.AUTH0_DOMAIN) {
       return c.json(
         { error: "Auth0 configuration missing. Set AUTH0_DOMAIN environment variable." },
         500
@@ -78,11 +71,11 @@ export const authMiddleware = (options: AuthMiddlewareOptions = {}) => {
       // Verify JWT token with Auth0 JWKS endpoint
       // This follows Auth0's recommended approach for API token verification
       const verifyOptions: Parameters<typeof jwtVerify>[2] = {
-        issuer: `https://${AUTH0_DOMAIN}/`,
+        issuer: `https://${CFG.AUTH0_DOMAIN}/`,
       };
 
-      if (AUTH0_AUDIENCE) {
-        verifyOptions.audience = AUTH0_AUDIENCE;
+      if (CFG.AUTH0_AUDIENCE) {
+        verifyOptions.audience = CFG.AUTH0_AUDIENCE;
       }
 
       const { payload } = await jwtVerify(token, JWKS, verifyOptions);
