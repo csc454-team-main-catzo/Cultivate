@@ -5,10 +5,17 @@ import { describeRoute, resolver } from "hono-openapi"
 import * as v from 'valibot'
 import { openAPIRouteHandler } from 'hono-openapi'
 import { connectDB } from './db.js'
+import { authMiddleware } from './middleware/auth.js'
 import listingRoutes from './routes/listings.js'
 import userRoutes from './routes/users.js'
 
-const app = new Hono()
+type AppBindings = {
+  // TODO: this is for convenience, by right should be a union of all middleware
+  // and router types or something.
+  Variables: any
+}
+
+const app = new Hono<AppBindings>()
 app.use(cors({
   origin: '*',
 }))
@@ -16,6 +23,8 @@ app.use(cors({
 const HealthCheckResponse = v.object({
   healthy: v.boolean(),
   time: v.date(),
+  authenticated: v.boolean(),
+  auth0Id: v.optional(v.string()),
 })
 
 app.get(
@@ -35,8 +44,17 @@ app.get(
       500: { description: 'Server error' },
     },
   }),
+  authMiddleware({ optional: true }),
   (c) => {
-    return c.json({ healthy: true, time: new Date().toISOString() })
+    const auth0Id = c.get('auth0Id')
+    const authenticated = Boolean(auth0Id)
+
+    return c.json({
+      healthy: true,
+      time: new Date().toISOString(),
+      authenticated,
+      ...(authenticated ? { auth0Id } : {}),
+    })
   },
 )
 // Mount resource routers
