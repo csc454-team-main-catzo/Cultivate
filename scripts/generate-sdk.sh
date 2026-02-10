@@ -36,17 +36,16 @@ while ! curl -s "$URL" > /dev/null; do
 done
 echo "Server is ready!"
 
-# Generate the SDK
+# Generate the SDK.
 echo "Generating SDK..."
 mkdir -p pkgs/sdk
 
-# Generate the SDK using typescript (experimental) (seems to be 2nd version of typescript-fetch).
 npx @openapitools/openapi-generator-cli generate \
   -i "$URL" \
-  -g typescript \
+  -g typescript-axios \
   -o pkgs/sdk \
   --skip-validate-spec \
-  --additional-properties=disallowAdditionalPropertiesIfNotPresent=false,platform=browser,npmName=sdk,npmVersion=0.0.0
+  --additional-properties=axiosVersion=1.13.5,supportsES6=true,disallowAdditionalPropertiesIfNotPresent=false,useSingleRequestParameter=true,npmName=sdk,npmVersion=0.0.0
 
 echo "SDK generation complete!"
 exit 0
