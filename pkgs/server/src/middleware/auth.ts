@@ -15,15 +15,20 @@ const JWKS = AUTH0_DOMAIN
   ? createRemoteJWKSet(new URL(`https://${AUTH0_DOMAIN}/.well-known/jwks.json`))
   : null;
 
+type AuthMiddlewareOptions = {
+  optional?: boolean;
+};
+
 /**
  * Auth0 JWT verification middleware
- * 
+ *
  * This middleware verifies JWT tokens from Authorization: Bearer <token> headers.
  * It follows Auth0's recommended approach for API token verification using
  * direct JWT verification with jose library (SPA + API architecture).
- * 
+ * Pass { optional: true } to allow requests without an Authorization header.
+ *
  * Expects: Authorization: Bearer <JWT token>
- * 
+ *
  * On success, sets:
  *   c.get("auth0Id")  → string (Auth0 user ID from 'sub' claim)
  *   c.get("userId")   → string (MongoDB user _id)
@@ -31,86 +36,103 @@ const JWKS = AUTH0_DOMAIN
  *   c.get("token")   → Decoded JWT payload
  *   c.get("isNewUser") → boolean (true if user doesn't exist in DB yet)
  */
-export const authMiddleware = async (c: Context, next: Next) => {
-  const authHeader = c.req.header("Authorization");
+export const authMiddleware = (options: AuthMiddlewareOptions = {}) => {
+  const { optional = false } = options;
 
-  if (!authHeader || !authHeader.startsWith("Bearer ")) {
-    return c.json(
-      { error: "Authorization header required (Bearer <token>)" },
-      401
-    );
-  }
+  return async (c: Context, next: Next) => {
+    const authHeader = c.req.header("Authorization");
 
-  const token = authHeader.slice(7).trim();
+    if (!authHeader) {
+      if (optional) {
+        await next();
+        return;
+      }
 
-  if (!token) {
-    return c.json({ error: "Token is required" }, 401);
-  }
-
-  if (!JWKS || !AUTH0_DOMAIN) {
-    return c.json(
-      { error: "Auth0 configuration missing. Set AUTH0_DOMAIN environment variable." },
-      500
-    );
-  }
-
-  try {
-    // Verify JWT token with Auth0 JWKS endpoint
-    // This follows Auth0's recommended approach for API token verification
-    const verifyOptions: Parameters<typeof jwtVerify>[2] = {
-      issuer: `https://${AUTH0_DOMAIN}/`,
-    };
-
-    if (AUTH0_AUDIENCE) {
-      verifyOptions.audience = AUTH0_AUDIENCE;
+      return c.json(
+        { error: "Authorization header required (Bearer <token>)" },
+        401
+      );
     }
 
-    const { payload } = await jwtVerify(token, JWKS, verifyOptions);
-
-    // Extract Auth0 user ID from 'sub' claim
-    const auth0Id = payload.sub as string;
-    if (!auth0Id) {
-      return c.json({ error: "Invalid token: missing 'sub' claim" }, 401);
+    if (!authHeader.startsWith("Bearer ")) {
+      return c.json(
+        { error: "Authorization header required (Bearer <token>)" },
+        401
+      );
     }
 
-    // Extract user info from token
-    const email = (payload.email as string) || "";
-    const name = (payload.name as string) || (payload.nickname as string) || "";
+    const token = authHeader.slice(7).trim();
 
-    // Find or create user in database
-    let user = await User.findOne({ auth0Id });
+    if (!token) {
+      return c.json({ error: "Token is required" }, 401);
+    }
 
-    if (!user) {
-      // User doesn't exist yet - they'll need to complete registration with role
+    if (!JWKS || !AUTH0_DOMAIN) {
+      return c.json(
+        { error: "Auth0 configuration missing. Set AUTH0_DOMAIN environment variable." },
+        500
+      );
+    }
+
+    try {
+      // Verify JWT token with Auth0 JWKS endpoint
+      // This follows Auth0's recommended approach for API token verification
+      const verifyOptions: Parameters<typeof jwtVerify>[2] = {
+        issuer: `https://${AUTH0_DOMAIN}/`,
+      };
+
+      if (AUTH0_AUDIENCE) {
+        verifyOptions.audience = AUTH0_AUDIENCE;
+      }
+
+      const { payload } = await jwtVerify(token, JWKS, verifyOptions);
+
+      // Extract Auth0 user ID from 'sub' claim
+      const auth0Id = payload.sub as string;
+      if (!auth0Id) {
+        return c.json({ error: "Invalid token: missing 'sub' claim" }, 401);
+      }
+
+      // Extract user info from token
+      const email = (payload.email as string) || "";
+      const name =
+        (payload.name as string) || (payload.nickname as string) || "";
+
+      // Find or create user in database
+      let user = await User.findOne({ auth0Id });
+
+      if (!user) {
+        // User doesn't exist yet - they'll need to complete registration with role
+        c.set("auth0Id", auth0Id);
+        c.set("token", payload);
+        c.set("isNewUser", true);
+        await next();
+        return;
+      }
+
+      // Update user info from token if needed (in case it changed in Auth0)
+      if (user.email !== email || user.name !== name) {
+        user.email = email;
+        user.name = name;
+        await user.save();
+      }
+
       c.set("auth0Id", auth0Id);
+      c.set("userId", user._id.toString());
+      c.set("user", user);
       c.set("token", payload);
-      c.set("isNewUser", true);
-      await next();
-      return;
+      c.set("isNewUser", false);
+    } catch (error: any) {
+      if (error.code === "ERR_JWT_EXPIRED") {
+        return c.json({ error: "Token expired" }, 401);
+      }
+      if (error.code === "ERR_JWT_INVALID") {
+        return c.json({ error: "Invalid token" }, 401);
+      }
+      console.error("Auth middleware error:", error);
+      return c.json({ error: "Authentication failed" }, 401);
     }
 
-    // Update user info from token if needed (in case it changed in Auth0)
-    if (user.email !== email || user.name !== name) {
-      user.email = email;
-      user.name = name;
-      await user.save();
-    }
-
-    c.set("auth0Id", auth0Id);
-    c.set("userId", user._id.toString());
-    c.set("user", user);
-    c.set("token", payload);
-    c.set("isNewUser", false);
-  } catch (error: any) {
-    if (error.code === "ERR_JWT_EXPIRED") {
-      return c.json({ error: "Token expired" }, 401);
-    }
-    if (error.code === "ERR_JWT_INVALID") {
-      return c.json({ error: "Invalid token" }, 401);
-    }
-    console.error("Auth middleware error:", error);
-    return c.json({ error: "Authentication failed" }, 401);
-  }
-
-  await next();
+    await next();
+  };
 };

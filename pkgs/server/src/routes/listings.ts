@@ -119,7 +119,7 @@ listings.post(
       401: { description: "Unauthorized" },
     },
   }),
-  authMiddleware,
+  authMiddleware(),
   validator("json", ListingCreateSchema),
   async (c) => {
     try {
@@ -173,7 +173,7 @@ listings.post(
       404: { description: "Listing not found" },
     },
   }),
-  authMiddleware,
+  authMiddleware(),
   validator("json", ResponseCreateSchema),
   async (c) => {
     try {

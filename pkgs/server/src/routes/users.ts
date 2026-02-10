@@ -36,7 +36,7 @@ users.post(
       401: { description: "Unauthorized" },
     },
   }),
-  authMiddleware,
+  authMiddleware(),
   validator("json", UserRegisterSchema),
   async (c) => {
     try {
@@ -98,7 +98,7 @@ users.get(
       404: { description: "User not found" },
     },
   }),
-  authMiddleware,
+  authMiddleware(),
   async (c) => {
     try {
       const user = c.get("user");
@@ -134,7 +134,7 @@ users.get(
       500: { description: "Server error" },
     },
   }),
-  authMiddleware,
+  authMiddleware(),
   async (c) => {
     try {
       const userDocs = await User.find().select("-auth0Id");
