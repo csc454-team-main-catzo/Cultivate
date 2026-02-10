@@ -1,5 +1,6 @@
 import { serve } from '@hono/node-server'
 import { Hono } from 'hono'
+import { openAPIRouteHandler } from 'hono-openapi'
 import { connectDB } from './db.js'
 import { User } from './models/User.js'
 
@@ -29,6 +30,20 @@ app.get('/users', async (c) => {
     return c.json({ error: error.message }, 500)
   }
 })
+
+app.get(
+  '/openapi.json',
+  openAPIRouteHandler(app, {
+    documentation: {
+      info: {
+        title: 'Cultivate',
+        version: '0.1.0',
+        description: 'test',
+      },
+    },
+    includeEmptyPaths: true,
+  }),
+)
 
 serve({
   fetch: app.fetch,
