@@ -1,9 +1,10 @@
 import { createContext, useContext } from 'react'
-import { DefaultApi, ListingsApi } from 'sdk'
+import { DefaultApi, ListingsApi, UsersApi } from 'sdk'
 
 export interface ApiContextState {
   misc: DefaultApi
   listings: ListingsApi
+  users: UsersApi
 }
 
 export const ApiContext = createContext<ApiContextState | null>(null)

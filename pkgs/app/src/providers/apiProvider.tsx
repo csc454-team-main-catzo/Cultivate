@@ -31,9 +31,10 @@ export function ApiProvider({ children }: PropsWithChildren) {
 
   const misc = useMemo(() => new DefaultApi(apiConfig), [apiConfig])
   const listings = useMemo(() => new ListingsApi(apiConfig), [apiConfig])
+  const users = useMemo(() => new UsersApi(apiConfig), [apiConfig])
 
   return (
-    <ApiContext.Provider value={{ misc, listings }}>
+    <ApiContext.Provider value={{ misc, listings, users }}>
       {children}
     </ApiContext.Provider>
   )
