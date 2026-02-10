@@ -2,9 +2,9 @@
   "name": "server",
   "type": "module",
   "scripts": {
-    "dev": "tsx watch src/index.ts",
+    "dev": "tsx watch --env-file=.env --include=.env src/index.ts",
     "build": "tsc",
-    "start": "node dist/index.js"
+    "start": "node --env-file=.env dist/index.js"
   },
   "dependencies": {
     "@hono/node-server": "^1.19.9",

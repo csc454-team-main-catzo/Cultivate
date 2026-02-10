@@ -13,6 +13,7 @@ createRoot(document.getElementById('root')!).render(
       domain={CFG.AUTH0_DOMAIN}
       clientId={CFG.AUTH0_CLIENT_ID}
       authorizationParams={{
+        // TODO: this can redirect to the dashboard instead.
         redirect_uri: window.location.origin,
         audience: CFG.AUTH0_AUDIENCE,
       }}

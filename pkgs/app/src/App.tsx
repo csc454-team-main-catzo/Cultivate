@@ -19,7 +19,7 @@ function App() {
         ; (async () => {
           try {
             const { data } = await api.misc.healthcheck({ signal: abort.signal })
-            setHelloWorld(`healthy: ${data.healthy}, server time: ${data.time}`)
+            setHelloWorld(`healthy: ${data.healthy}, server time: ${data.time}, auth: ${data.auth0Id ?? data.authenticated}`)
           } finally {
             isRunning = false
           }

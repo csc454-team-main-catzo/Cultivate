@@ -7,6 +7,8 @@ Name | Type | Description | Notes
 ------------ | ------------- | ------------- | -------------
 **healthy** | **boolean** |  | [default to undefined]
 **time** | **any** |  | [default to undefined]
+**authenticated** | **boolean** |  | [default to undefined]
+**auth0Id** | **string** |  | [optional] [default to undefined]
 
 ## Example
 
@@ -16,6 +18,8 @@ import { Healthcheck200Response } from 'sdk';
 const instance: Healthcheck200Response = {
     healthy,
     time,
+    authenticated,
+    auth0Id,
 };
 ```
 

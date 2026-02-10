@@ -90,9 +90,11 @@ export interface CreateListingResponseRequest {
 export interface Healthcheck200Response {
     'healthy': boolean;
     'time': any;
+    'authenticated': boolean;
+    'auth0Id'?: string;
 }
 export interface ListListings200ResponseInner {
-    '_id': string;
+    '_id': string | null;
     'type': ListListings200ResponseInnerTypeEnum;
     'title': string | null;
     'item': string | null;
