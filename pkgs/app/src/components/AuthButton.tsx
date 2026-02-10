@@ -8,6 +8,7 @@ export function AuthButton() {
     return <div>Loading...</div>;
   }
   if (error) {
+    console.error(error);
     return <div>Oops... {error.message}</div>;
   }
 

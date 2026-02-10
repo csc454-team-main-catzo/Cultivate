@@ -41,6 +41,14 @@ export const authMiddleware = (options: AuthMiddlewareOptions = {}) => {
 
   return async (c: Context, next: Next) => {
     const authHeader = c.req.header("Authorization");
+    const token = authHeader?.slice(7).trim();
+
+    // NOTE: workaround for generated SDK not handling auth-optional routes properly;
+    // FE will send a placeholder token in such cases.
+    if (optional && token === "NULL") {
+      await next();
+      return;
+    }
 
     if (!authHeader) {
       if (optional) {
@@ -60,8 +68,6 @@ export const authMiddleware = (options: AuthMiddlewareOptions = {}) => {
         401
       );
     }
-
-    const token = authHeader.slice(7).trim();
 
     if (!token) {
       return c.json({ error: "Token is required" }, 401);

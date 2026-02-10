@@ -20,10 +20,13 @@ export function ApiProvider({ children }: PropsWithChildren) {
             },
           })
         } else {
-          console.error("Not auth'ed, no token to get.")
-          // TODO: specific error type for unauthorized bubble up to error boundary
-          // which would trigger redirect to login page. Should catch getAccessTokenSilently too
-          throw new Error("Not authenticated.")
+          // Reaching here means it tried to call an auth route without an access
+          // token... which is useful because we have routes that are auth-optional
+          // so we can send a placeholder and handle the case on the backend.
+          console.warn("Not auth'ed, no token to get.")
+          return "NULL"
+          // TODO: on receiving 401 from backend, should redirect to login. but
+          // I am not sure where to register the status handler for the SDK.
         }
       },
     })
