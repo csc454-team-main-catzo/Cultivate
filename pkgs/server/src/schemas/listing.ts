@@ -2,6 +2,7 @@ import * as v from "valibot";
 
 /* ---------- Request Schemas ---------- */
 
+/** Create a new listing (demand from a restaurant, or supply from a farmer) */
 export const ListingCreateSchema = v.object({
   type: v.picklist(["demand", "supply"], "Type must be 'demand' or 'supply'"),
   title: v.pipe(
@@ -34,11 +35,23 @@ export const ListingCreateSchema = v.object({
     ),
     v.transform((val) => val as [number, number])
   ),
-  parentId: v.optional(v.pipe(v.string(), v.minLength(1))),
   expiresAt: v.optional(v.string("expiresAt must be an ISO date string")),
 });
 
 export type ListingCreateInput = v.InferOutput<typeof ListingCreateSchema>;
+
+/** Add a response to an existing listing */
+export const ResponseCreateSchema = v.object({
+  message: v.pipe(
+    v.string(),
+    v.minLength(1, "Message is required"),
+    v.maxLength(2000, "Message cannot exceed 2000 characters")
+  ),
+  price: v.pipe(v.number(), v.minValue(0, "Price cannot be negative")),
+  qty: v.pipe(v.number(), v.minValue(1, "Quantity must be at least 1")),
+});
+
+export type ResponseCreateInput = v.InferOutput<typeof ResponseCreateSchema>;
 
 /* ---------- Response Schemas ---------- */
 
@@ -46,6 +59,15 @@ const PopulatedUserSchema = v.object({
   _id: v.string(),
   name: v.string(),
   email: v.string(),
+});
+
+const ResponseSubdocSchema = v.object({
+  _id: v.string(),
+  message: v.string(),
+  price: v.number(),
+  qty: v.number(),
+  createdBy: PopulatedUserSchema,
+  createdAt: v.string(),
 });
 
 export const ListingResponseSchema = v.object({
@@ -58,9 +80,9 @@ export const ListingResponseSchema = v.object({
   qty: v.number(),
   latLng: v.tuple([v.number(), v.number()]),
   createdBy: PopulatedUserSchema,
-  parentId: v.nullable(v.string()),
-  matchedListingId: v.nullable(v.string()),
+  matchedResponseId: v.nullable(v.string()),
   status: v.picklist(["open", "matched", "fulfilled", "expired"]),
+  responses: v.array(ResponseSubdocSchema),
   createdAt: v.string(),
   updatedAt: v.string(),
   expiresAt: v.nullable(v.string()),

@@ -5,6 +5,8 @@ import Listing from "../models/Listing.js";
 import {
   ListingCreateSchema,
   type ListingCreateInput,
+  ResponseCreateSchema,
+  type ResponseCreateInput,
   ListingListResponseSchema,
   ListingResponseSchema,
 } from "../schemas/listing.js";
@@ -19,13 +21,13 @@ type Env = {
 const listings = new Hono<Env>();
 
 /* ------------------------------------------------------------------ */
-/*  GET /listings — public, with optional ?type=demand|supply filter  */
+/*  GET /listings — public, list all listings, optional ?type= filter  */
 /* ------------------------------------------------------------------ */
 listings.get(
   "/",
   describeRoute({
     description:
-      "List all listings. Filter by ?type=demand or ?type=supply. Returns creator info populated.",
+      "List all listings. Optional ?type=demand|supply filter. Returns creator info populated.",
     tags: ["Listings"],
     responses: {
       200: {
@@ -42,18 +44,18 @@ listings.get(
   async (c) => {
     try {
       const typeFilter = c.req.query("type");
-      const filter: Record<string, unknown> = {};
-
+      const filter: Record<string, string> = {};
       if (typeFilter === "demand" || typeFilter === "supply") {
         filter.type = typeFilter;
       }
 
       const all = await Listing.find(filter)
         .populate("createdBy", "name email")
-        .sort({ createdAt: -1 })
-        .lean();
+        .populate("responses.createdBy", "name email")
+        .sort({ createdAt: -1 });
 
-      return c.json(all, 200);
+      // .toJSON() respects schema defaults, so null fields appear
+      return c.json(all.map((doc) => doc.toJSON()), 200);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Unknown error";
       return c.json({ error: message }, 500);
@@ -62,16 +64,16 @@ listings.get(
 );
 
 /* ------------------------------------------------------------------ */
-/*  GET /listings/:id — public, single listing with responses         */
+/*  GET /listings/:id — public, single listing with embedded responses */
 /* ------------------------------------------------------------------ */
 listings.get(
   "/:id",
   describeRoute({
-    description: "Get a single listing with its responses populated",
+    description: "Get a single listing with its embedded responses",
     tags: ["Listings"],
     responses: {
       200: {
-        description: "Listing with populated responses",
+        description: "Listing with embedded responses",
         content: {
           "application/json": {
             schema: resolver(ListingResponseSchema),
@@ -85,17 +87,13 @@ listings.get(
     try {
       const listing = await Listing.findById(c.req.param("id"))
         .populate("createdBy", "name email")
-        .populate({
-          path: "responses",
-          populate: { path: "createdBy", select: "name email" },
-        })
-        .lean();
+        .populate("responses.createdBy", "name email");
 
       if (!listing) {
         return c.json({ error: "Listing not found" }, 404);
       }
 
-      return c.json(listing, 200);
+      return c.json(listing.toJSON(), 200);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Unknown error";
       return c.json({ error: message }, 500);
@@ -104,13 +102,12 @@ listings.get(
 );
 
 /* ------------------------------------------------------------------ */
-/*  POST /listings — auth required, creates listing for current user  */
+/*  POST /listings — auth required, create a demand or supply listing  */
 /* ------------------------------------------------------------------ */
 listings.post(
   "/",
   describeRoute({
-    description:
-      "Create a new listing (demand from restaurant or supply from farmer)",
+    description: "Create a new listing (demand or supply)",
     tags: ["Listings"],
     responses: {
       201: {
@@ -139,6 +136,73 @@ listings.post(
 
       const populated = await Listing.findById(listing._id)
         .populate("createdBy", "name email")
+        .lean();
+
+      return c.json(populated, 201);
+    } catch (err: unknown) {
+      if (err instanceof Error && err.name === "ValidationError") {
+        return c.json({ error: err.message }, 400);
+      }
+      const message = err instanceof Error ? err.message : "Unknown error";
+      return c.json({ error: message }, 500);
+    }
+  }
+);
+
+/* ------------------------------------------------------------------ */
+/*  POST /listings/:id/responses — auth required, add an offer        */
+/* ------------------------------------------------------------------ */
+listings.post(
+  "/:id/responses",
+  describeRoute({
+    description:
+      "Add a response (farmer offer) to an existing demand listing",
+    tags: ["Listings"],
+    responses: {
+      201: {
+        description: "Response added, returns updated listing",
+        content: {
+          "application/json": {
+            schema: resolver(ListingResponseSchema),
+          },
+        },
+      },
+      400: { description: "Validation error" },
+      401: { description: "Unauthorized" },
+      404: { description: "Listing not found" },
+    },
+  }),
+  authMiddleware,
+  validator("json", ResponseCreateSchema),
+  async (c) => {
+    try {
+      const listingId = c.req.param("id");
+      const data = c.req.valid("json" as never) as ResponseCreateInput;
+      const userId = c.get("userId");
+
+      const listing = await Listing.findById(listingId);
+
+      if (!listing) {
+        return c.json({ error: "Listing not found" }, 404);
+      }
+
+      if (listing.status !== "open") {
+        return c.json(
+          { error: "Cannot add responses to a non-open listing" },
+          400
+        );
+      }
+
+      listing.responses.push({
+        ...data,
+        createdBy: userId,
+      } as any);
+
+      await listing.save();
+
+      const populated = await Listing.findById(listing._id)
+        .populate("createdBy", "name email")
+        .populate("responses.createdBy", "name email")
         .lean();
 
       return c.json(populated, 201);

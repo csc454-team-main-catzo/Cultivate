@@ -1,13 +1,51 @@
 import mongoose, { Schema, Document, Types } from "mongoose";
 
+/* ---------- Response (offer) subdocument ---------- */
+
+export interface IResponse {
+  _id: Types.ObjectId;
+  message: string;
+  price: number;
+  qty: number;
+  createdBy: Types.ObjectId;
+  createdAt: Date;
+}
+
+const ResponseSchema = new Schema<IResponse>(
+  {
+    message: {
+      type: String,
+      required: [true, "Response message is required"],
+      trim: true,
+      maxlength: [2000, "Response message cannot exceed 2000 characters"],
+    },
+    price: {
+      type: Number,
+      required: [true, "Price is required"],
+      min: [0, "Price cannot be negative"],
+    },
+    qty: {
+      type: Number,
+      required: [true, "Quantity is required"],
+      min: [1, "Quantity must be at least 1"],
+    },
+    createdBy: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
+      required: [true, "CreatedBy is required"],
+    },
+  },
+  { timestamps: { createdAt: true, updatedAt: false } }
+);
+
+/* ---------- Listing document ---------- */
+
 /**
- * Listing document interface.
- *
  * A listing represents either:
  *   - "demand" → a restaurant seeking produce
  *   - "supply" → a farmer offering produce
  *
- * A supply listing may optionally respond to a demand listing via `parentId`.
+ * Other users can respond with embedded offers in the `responses` array.
  */
 export interface IListing extends Document {
   type: "demand" | "supply";
@@ -18,12 +56,12 @@ export interface IListing extends Document {
   qty: number;
   latLng: [number, number];
   createdBy: Types.ObjectId;
-  parentId: Types.ObjectId | null;
-  matchedListingId: Types.ObjectId | null;
+  matchedResponseId: Types.ObjectId | null;
   status: "open" | "matched" | "fulfilled" | "expired";
+  responses: IResponse[];
   createdAt: Date;
   updatedAt: Date;
-  expiresAt: Date;
+  expiresAt: Date | null;
 }
 
 const ListingSchema = new Schema<IListing>(
@@ -83,14 +121,8 @@ const ListingSchema = new Schema<IListing>(
       ref: "User",
       required: [true, "CreatedBy is required"],
     },
-    parentId: {
+    matchedResponseId: {
       type: Schema.Types.ObjectId,
-      ref: "Listing",
-      default: null,
-    },
-    matchedListingId: {
-      type: Schema.Types.ObjectId,
-      ref: "Listing",
       default: null,
     },
     status: {
@@ -100,6 +132,10 @@ const ListingSchema = new Schema<IListing>(
         message: "{VALUE} is not a valid listing status",
       },
       default: "open",
+    },
+    responses: {
+      type: [ResponseSchema],
+      default: [],
     },
     expiresAt: {
       type: Date,
@@ -113,17 +149,9 @@ const ListingSchema = new Schema<IListing>(
   }
 );
 
-/* ---------- Virtual: responses that reference this listing ---------- */
-ListingSchema.virtual("responses", {
-  ref: "Listing",
-  localField: "_id",
-  foreignField: "parentId",
-});
-
 /* ---------- Indexes ---------- */
 ListingSchema.index({ type: 1, status: 1 });
 ListingSchema.index({ createdBy: 1 });
-ListingSchema.index({ parentId: 1 });
 ListingSchema.index({ item: 1, type: 1, status: 1 });
 
 const Listing =
