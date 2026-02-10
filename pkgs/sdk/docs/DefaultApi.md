@@ -34,7 +34,7 @@ This endpoint does not have any parameters.
 
 ### Authorization
 
-No authorization required
+[bearerAuth](../README.md#bearerAuth)
 
 ### HTTP request headers
 

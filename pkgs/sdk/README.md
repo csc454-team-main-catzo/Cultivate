@@ -80,5 +80,10 @@ Class | Method | HTTP request | Description
 <a id="documentation-for-authorization"></a>
 ## Documentation For Authorization
 
-Endpoints do not require authorization.
+
+Authentication schemes defined for the API:
+<a id="bearerAuth"></a>
+### bearerAuth
+
+- **Type**: Bearer authentication (JWT)
 
