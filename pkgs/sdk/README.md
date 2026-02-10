@@ -1,6 +1,21 @@
 ## sdk@0.0.0
 
-This generator creates TypeScript/JavaScript client that utilizes fetch-api.
+This generator creates TypeScript/JavaScript client that utilizes [axios](https://github.com/axios/axios). The generated Node module can be used in the following environments:
+
+Environment
+* Node.js
+* Webpack
+* Browserify
+
+Language level
+* ES5 - you must have a Promises/A+ library installed
+* ES6
+
+Module system
+* CommonJS
+* ES6 module system
+
+It can be used in both TypeScript and JavaScript. In TypeScript, the definition will be automatically resolved via `package.json`. ([Reference](https://www.typescriptlang.org/docs/handbook/declaration-files/consumption.html))
 
 ### Building
 
@@ -12,11 +27,11 @@ npm run build
 
 ### Publishing
 
-First build the package then run ```npm publish```
+First build the package then run `npm publish`
 
 ### Consuming
 
-Navigate to the folder of your consuming project and run one of the following commands.
+navigate to the folder of your consuming project and run one of the following commands.
 
 _published:_
 
@@ -30,51 +45,34 @@ _unPublished (not recommended):_
 npm install PATH_TO_GENERATED_PACKAGE --save
 ```
 
-### Usage
+### Documentation for API Endpoints
 
-Below code snippet shows exemplary usage of the configuration and the API based 
-on the typical `PetStore` example used for OpenAPI. 
+All URIs are relative to *http://localhost:3000*
 
-```
-import * as your_api from 'your_api_package'
+Class | Method | HTTP request | Description
+------------ | ------------- | ------------- | -------------
+*DefaultApi* | [**healthcheck**](docs/DefaultApi.md#healthcheck) | **GET** /health | Health check route
+*ListingsApi* | [**createListing**](docs/ListingsApi.md#createlisting) | **POST** /listings | Create a new listing (demand or supply)
+*ListingsApi* | [**createListingResponse**](docs/ListingsApi.md#createlistingresponse) | **POST** /listings/{id}/responses | Add a response (farmer offer) to an existing demand listing
+*ListingsApi* | [**getListing**](docs/ListingsApi.md#getlisting) | **GET** /listings/{id} | Get a single listing with its embedded responses
+*ListingsApi* | [**listListings**](docs/ListingsApi.md#listlistings) | **GET** /listings | List all listings. Optional ?type&#x3D;demand|supply filter. Returns creator info populated.
 
-// Covers all auth methods included in your OpenAPI yaml definition
-const authConfig: your_api.AuthMethodsConfiguration = {
-    "api_key": "YOUR_API_KEY"
-}
 
-// Implements a simple middleware to modify requests before (`pre`) they are sent
-// and after (`post`) they have been received 
-class Test implements your_api.Middleware {
-    pre(context: your_api.RequestContext): Promise<your_api.RequestContext> {
-        // Modify context here and return
-        return Promise.resolve(context);
-    }
+### Documentation For Models
 
-    post(context: your_api.ResponseContext): Promise<your_api.ResponseContext> {
-        return Promise.resolve(context);
-    }
+ - [CreateListing201Response](docs/CreateListing201Response.md)
+ - [CreateListing201ResponseResponsesInner](docs/CreateListing201ResponseResponsesInner.md)
+ - [CreateListingRequest](docs/CreateListingRequest.md)
+ - [CreateListingResponseRequest](docs/CreateListingResponseRequest.md)
+ - [Healthcheck200Response](docs/Healthcheck200Response.md)
+ - [ListListings200ResponseInner](docs/ListListings200ResponseInner.md)
+ - [ListListings200ResponseInnerCreatedBy](docs/ListListings200ResponseInnerCreatedBy.md)
+ - [ListListings200ResponseInnerResponsesInner](docs/ListListings200ResponseInnerResponsesInner.md)
+ - [ListListings200ResponseInnerResponsesInnerCreatedBy](docs/ListListings200ResponseInnerResponsesInnerCreatedBy.md)
 
-}
 
-// Create configuration parameter object
-const configurationParameters = {
-    httpApi: new your_api.JQueryHttpLibrary(), // Can also be ignored - default is usually fine
-    baseServer: your_api.servers[0], // First server is default
-    authMethods: authConfig, // No auth is default
-    promiseMiddleware: [new Test()],
-}
+<a id="documentation-for-authorization"></a>
+## Documentation For Authorization
 
-// Convert to actual configuration
-const config = your_api.createConfiguration(configurationParameters);
+Endpoints do not require authorization.
 
-// Use configuration with your_api
-const api = new your_api.PetApi(config);
-your_api.Pet p = new your_api.Pet();
-p.name = "My new pet";
-p.photoUrls = [];
-p.tags = [];
-p.status = "available";
-Promise<your_api.Pet> createdPet = api.addPet(p);
-
-```
