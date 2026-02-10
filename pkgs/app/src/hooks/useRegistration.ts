@@ -1,14 +1,15 @@
 import { useState } from 'react';
 import { useAuth0 } from '@auth0/auth0-react';
-import { registerUser } from '../services/registration';
-import { useUser } from '../contexts/userContext';
+import { useApi } from '../providers/apiContext';
+import { useUser } from '../providers/userContext';
 
 /**
  * Hook for user registration
  * Separates registration logic from user context
  */
 export function useRegistration() {
-  const { isAuthenticated, getAccessTokenSilently } = useAuth0();
+  const { isAuthenticated } = useAuth0();
+  const { users } = useApi();
   const { refreshUser } = useUser();
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
@@ -22,13 +23,7 @@ export function useRegistration() {
     setError(null);
 
     try {
-      const token = await getAccessTokenSilently({
-        authorizationParams: {
-          audience: import.meta.env.VITE_AUTH0_AUDIENCE,
-        },
-      });
-      
-      await registerUser(token, role);
+      await users.registerUser({ registerUserRequest: { role } });
       // Refresh user data after registration
       await refreshUser();
     } catch (err) {
