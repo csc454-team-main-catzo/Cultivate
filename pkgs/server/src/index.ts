@@ -2,6 +2,7 @@ import { serve } from '@hono/node-server'
 import { Hono } from 'hono'
 import { connectDB } from './db.js'
 import { User } from './models/User.js'
+import { authMiddleware } from './middleware/auth.js'
 import listingRoutes from './routes/listings.js'
 
 const app = new Hono()
@@ -12,19 +13,74 @@ app.get('/', (c) => {
   return c.json({ message: 'Hello Hono with MongoDB!' })
 })
 
-app.post('/users', async (c) => {
+// Register a new user (requires Auth0 token + role)
+// This endpoint completes user registration after Auth0 authentication
+app.post('/users/register', authMiddleware, async (c) => {
   try {
+    const auth0Id = c.get('auth0Id')
+    const token = c.get('token')
+    const isNewUser = c.get('isNewUser')
+
+    // Check if user already exists
+    if (!isNewUser) {
+      const existingUser = await User.findOne({ auth0Id })
+      if (existingUser) {
+        return c.json({ error: 'User already registered' }, 400)
+      }
+    }
+
     const body = await c.req.json()
-    const user = await User.create(body)
+    const { role } = body
+
+    if (!role || !['farmer', 'restaurant'].includes(role)) {
+      return c.json(
+        { error: 'Role is required and must be either "farmer" or "restaurant"' },
+        400
+      )
+    }
+
+    // Extract user info from Auth0 token
+    const email = (token?.email as string) || ''
+    const name = (token?.name as string) || (token?.nickname as string) || ''
+
+    if (!email) {
+      return c.json({ error: 'Email not found in token' }, 400)
+    }
+
+    // Create user in database
+    const user = await User.create({
+      auth0Id,
+      email,
+      name: name || email.split('@')[0], // Fallback to email prefix if no name
+      role,
+    })
+
     return c.json(user, 201)
   } catch (error: any) {
+    if (error.code === 11000) {
+      return c.json({ error: 'User already exists' }, 400)
+    }
     return c.json({ error: error.message }, 400)
   }
 })
 
-app.get('/users', async (c) => {
+// Get current authenticated user
+app.get('/users/me', authMiddleware, async (c) => {
   try {
-    const users = await User.find()
+    const user = c.get('user')
+    if (!user) {
+      return c.json({ error: 'User not found. Please complete registration.' }, 404)
+    }
+    return c.json(user)
+  } catch (error: any) {
+    return c.json({ error: error.message }, 500)
+  }
+})
+
+// Get all users (protected route)
+app.get('/users', authMiddleware, async (c) => {
+  try {
+    const users = await User.find().select('-auth0Id') // Exclude auth0Id from response
     return c.json(users)
   } catch (error: any) {
     return c.json({ error: error.message }, 500)

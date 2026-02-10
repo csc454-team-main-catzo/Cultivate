@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { describeRoute, resolver, validator } from "hono-openapi";
 import { authMiddleware } from "../middleware/auth.js";
+import type { AuthenticatedContext } from "../middleware/types.js";
 import Listing from "../models/Listing.js";
 import {
   ListingCreateSchema,
@@ -11,14 +12,7 @@ import {
   ListingResponseSchema,
 } from "../schemas/listing.js";
 
-type Env = {
-  Variables: {
-    userId: string;
-    user: unknown;
-  };
-};
-
-const listings = new Hono<Env>();
+const listings = new Hono<AuthenticatedContext>();
 
 /* ------------------------------------------------------------------ */
 /*  GET /listings — public, list all listings, optional ?type= filter  */
