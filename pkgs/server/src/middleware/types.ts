@@ -1,4 +1,4 @@
-import type { User } from '../models/User.js';
+import type { IUser } from '../models/User.js';
 
 /**
  * Type definitions for Hono context variables set by authMiddleware
@@ -6,7 +6,7 @@ import type { User } from '../models/User.js';
 export interface AuthContextVariables {
   auth0Id: string;
   userId: string;
-  user: User;
+  user: IUser;
   token: Record<string, unknown>;
   isNewUser: boolean;
 }
