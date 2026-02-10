@@ -1,10 +1,39 @@
 import * as v from "valibot";
 
+/* ---------- Shared Enums ---------- */
+
+export const ListingTypeSchema = v.picklist(
+  ["demand", "supply"],
+  "Type must be 'demand' or 'supply'"
+);
+
+export const ListingStatusSchema = v.picklist(
+  ["open", "matched", "fulfilled", "expired"],
+  "Status must be 'open', 'matched', 'fulfilled', or 'expired'"
+);
+
+/* ---------- Shared Sub-schemas ---------- */
+
+const PopulatedUserSchema = v.object({
+  _id: v.string(),
+  name: v.string(),
+  email: v.string(),
+});
+
+const ResponseSubdocSchema = v.object({
+  _id: v.string(),
+  message: v.string(),
+  price: v.number(),
+  qty: v.number(),
+  createdBy: PopulatedUserSchema,
+  createdAt: v.string(),
+});
+
 /* ---------- Request Schemas ---------- */
 
 /** Create a new listing (demand from a restaurant, or supply from a farmer) */
 export const ListingCreateSchema = v.object({
-  type: v.picklist(["demand", "supply"], "Type must be 'demand' or 'supply'"),
+  type: ListingTypeSchema,
   title: v.pipe(
     v.string(),
     v.minLength(1, "Title is required"),
@@ -55,24 +84,9 @@ export type ResponseCreateInput = v.InferOutput<typeof ResponseCreateSchema>;
 
 /* ---------- Response Schemas ---------- */
 
-const PopulatedUserSchema = v.object({
-  _id: v.string(),
-  name: v.string(),
-  email: v.string(),
-});
-
-const ResponseSubdocSchema = v.object({
-  _id: v.string(),
-  message: v.string(),
-  price: v.number(),
-  qty: v.number(),
-  createdBy: PopulatedUserSchema,
-  createdAt: v.string(),
-});
-
 export const ListingResponseSchema = v.object({
   _id: v.string(),
-  type: v.picklist(["demand", "supply"]),
+  type: ListingTypeSchema,
   title: v.string(),
   item: v.string(),
   description: v.string(),
@@ -81,7 +95,7 @@ export const ListingResponseSchema = v.object({
   latLng: v.tuple([v.number(), v.number()]),
   createdBy: PopulatedUserSchema,
   matchedResponseId: v.nullable(v.string()),
-  status: v.picklist(["open", "matched", "fulfilled", "expired"]),
+  status: ListingStatusSchema,
   responses: v.array(ResponseSubdocSchema),
   createdAt: v.string(),
   updatedAt: v.string(),
