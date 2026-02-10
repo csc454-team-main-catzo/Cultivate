@@ -3,13 +3,14 @@ import { useMemo } from 'react'
 import { useAuth0 } from '@auth0/auth0-react'
 import { Configuration, DefaultApi, ListingsApi } from 'sdk'
 import { ApiContext } from './apiContext'
+import CFG from '../config'
 
 export function ApiProvider({ children }: PropsWithChildren) {
   const { isAuthenticated, getAccessTokenSilently } = useAuth0()
 
   const apiConfig = useMemo(() => {
     return new Configuration({
-      basePath: import.meta.env.VITE_API_URL || 'http://localhost:3000',
+      basePath: CFG.API_URL,
       accessToken: async () => {
         if (isAuthenticated) {
           try {

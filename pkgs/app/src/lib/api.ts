@@ -1,7 +1,9 @@
+import CFG from "../config"
+
 /**
  * API client for backend requests
  */
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+const API_BASE_URL = CFG.API_URL;
 
 export interface ApiError {
   error: string;
@@ -21,7 +23,7 @@ async function apiRequest<T>(
   token?: string
 ): Promise<T> {
   const url = `${API_BASE_URL}${endpoint}`;
-  
+
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     ...(options.headers as Record<string, string>),
@@ -55,7 +57,7 @@ async function apiRequest<T>(
 }
 
 export const userApi = {
-  getMe: (token: string) => 
+  getMe: (token: string) =>
     apiRequest<AppUser>('/users/me', { method: 'GET' }, token),
 
   register: (token: string, role: 'farmer' | 'restaurant') =>
