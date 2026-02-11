@@ -105,7 +105,7 @@ export default function Listings() {
                           ? "Farmer"
                           : l.type === "demand"
                             ? "Restaurant"
-                            : "Farme"}
+                            : "Farmer"}
                     </span>
                     <span className="font-semibold text-earth-900">{l.title}</span>
                     {Array.isArray(l.responses) && l.responses.length > 0 && (
