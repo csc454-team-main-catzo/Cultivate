@@ -6,6 +6,8 @@ import Listing from "../models/Listing.js";
 import {
   ListingCreateSchema,
   type ListingCreateInput,
+  ListingUpdateSchema,
+  type ListingUpdateInput,
   ResponseCreateSchema,
   type ResponseCreateInput,
   ListingListResponseSchema,
@@ -214,6 +216,111 @@ listings.post(
       if (err instanceof Error && err.name === "ValidationError") {
         return c.json({ error: err.message }, 400);
       }
+      const message = err instanceof Error ? err.message : "Unknown error";
+      return c.json({ error: message }, 500);
+    }
+  }
+);
+
+/* ------------------------------------------------------------------ */
+/*  PATCH /listings/:id — auth required, update own listing           */
+/* ------------------------------------------------------------------ */
+listings.patch(
+  "/:id",
+  describeRoute({
+    operationId: "updateListing",
+    summary: "Update a listing (owner only)",
+    security: [{ bearerAuth: [] }],
+    responses: {
+      200: {
+        description: "Listing updated",
+        content: {
+          "application/json": {
+            schema: resolver(ListingResponseSchema),
+          },
+        },
+      },
+      400: { description: "Validation error" },
+      401: { description: "Unauthorized" },
+      403: { description: "Forbidden — not the listing owner" },
+      404: { description: "Listing not found" },
+    },
+  }),
+  authMiddleware(),
+  validator("json", ListingUpdateSchema),
+  async (c) => {
+    try {
+      const listingId = c.req.param("id");
+      const data = c.req.valid("json" as never) as ListingUpdateInput;
+      const userId = c.get("userId");
+
+      const listing = await Listing.findById(listingId);
+      if (!listing) {
+        return c.json({ error: "Listing not found" }, 404);
+      }
+      if (listing.createdBy.toString() !== userId) {
+        return c.json({ error: "You can only edit your own listing" }, 403);
+      }
+
+      if (data.title !== undefined) listing.title = data.title;
+      if (data.item !== undefined) listing.item = data.item;
+      if (data.description !== undefined) listing.description = data.description;
+      if (data.price !== undefined) listing.price = data.price;
+      if (data.qty !== undefined) listing.qty = data.qty;
+      if (data.status !== undefined) listing.status = data.status;
+      if (data.latLng !== undefined) listing.latLng = data.latLng;
+
+      await listing.save();
+
+      const populated = await Listing.findById(listing._id)
+        .populate("createdBy", "name email")
+        .populate("responses.createdBy", "name email")
+        .lean();
+
+      return c.json(populated, 200);
+    } catch (err: unknown) {
+      if (err instanceof Error && err.name === "ValidationError") {
+        return c.json({ error: err.message }, 400);
+      }
+      const message = err instanceof Error ? err.message : "Unknown error";
+      return c.json({ error: message }, 500);
+    }
+  }
+);
+
+/* ------------------------------------------------------------------ */
+/*  DELETE /listings/:id — auth required, delete own listing          */
+/* ------------------------------------------------------------------ */
+listings.delete(
+  "/:id",
+  describeRoute({
+    operationId: "deleteListing",
+    summary: "Delete a listing (owner only)",
+    security: [{ bearerAuth: [] }],
+    responses: {
+      204: { description: "Listing deleted" },
+      401: { description: "Unauthorized" },
+      403: { description: "Forbidden — not the listing owner" },
+      404: { description: "Listing not found" },
+    },
+  }),
+  authMiddleware(),
+  async (c) => {
+    try {
+      const listingId = c.req.param("id");
+      const userId = c.get("userId");
+
+      const listing = await Listing.findById(listingId);
+      if (!listing) {
+        return c.json({ error: "Listing not found" }, 404);
+      }
+      if (listing.createdBy.toString() !== userId) {
+        return c.json({ error: "You can only delete your own listing" }, 403);
+      }
+
+      await Listing.findByIdAndDelete(listingId);
+      return c.body(null, 204);
+    } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Unknown error";
       return c.json({ error: message }, 500);
     }

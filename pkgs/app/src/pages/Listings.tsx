@@ -12,6 +12,7 @@ interface Listing {
   qty: number;
   status: string;
   createdBy: { _id: string; name: string; email: string };
+  responses?: unknown[];
   createdAt: string;
 }
 
@@ -40,80 +41,91 @@ export default function Listings() {
   }, [filter, listingsApi]);
 
   return (
-    <div className="max-w-3xl mx-auto px-4 py-8">
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold">Listings</h1>
-        <Link
-          to="/listings/new"
-          className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 text-sm font-medium"
-        >
+    <div className="max-w-3xl mx-auto px-4 sm:px-6 py-8 sm:py-10">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+        <h1 className="font-display text-2xl sm:text-3xl text-earth-900">
+          Listings
+        </h1>
+        <Link to="/listings/new" className="btn-primary shrink-0">
           + New Listing
         </Link>
       </div>
 
-      {/* Filter tabs */}
-      <div className="flex gap-2 mb-6">
+      <div className="flex gap-2 mb-6 p-1 bg-earth-100 rounded-lg w-fit">
         {(["all", "demand", "supply"] as const).map((f) => (
           <button
             key={f}
+            type="button"
             onClick={() => setFilter(f)}
             className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
               filter === f
-                ? "bg-gray-800 text-white"
-                : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                ? "bg-white text-earth-900 shadow-card"
+                : "text-earth-600 hover:text-earth-800"
             }`}
           >
-            {f === "all" ? "All" : f === "demand" ? "🍽️ Bounties" : "🌾 Offers"}
+            {f === "all" ? "All" : f === "demand" ? "Bounties" : "Offers"}
           </button>
         ))}
       </div>
 
       {loading ? (
-        <p className="text-gray-500">Loading...</p>
+        <div className="flex items-center justify-center py-16">
+          <div className="flex flex-col items-center gap-3">
+            <div className="w-8 h-8 border-2 border-leaf-500 border-t-transparent rounded-full animate-spin" />
+            <p className="text-earth-500 text-sm font-medium">Loading listings...</p>
+          </div>
+        </div>
       ) : listings.length === 0 ? (
-        <p className="text-gray-500">
-          No listings yet.{" "}
-          <Link to="/listings/new" className="text-blue-600 underline">
+        <div className="card p-8 text-center">
+          <p className="text-earth-600 mb-2">No listings yet.</p>
+          <Link to="/listings/new" className="text-leaf-600 font-medium hover:text-leaf-700">
             Create one
           </Link>
-        </p>
-      ) : (
-        <div className="space-y-4">
-          {listings.map((l) => (
-            <div
-              key={l._id}
-              className="border border-gray-200 rounded-lg p-4 hover:shadow-sm transition-shadow"
-            >
-              <div className="flex items-start justify-between">
-                <div>
-                  <span
-                    className={`inline-block text-xs font-semibold px-2 py-0.5 rounded-full mr-2 ${
-                      l.type === "demand"
-                        ? "bg-blue-100 text-blue-700"
-                        : "bg-green-100 text-green-700"
-                    }`}
-                  >
-                    {l.type === "demand" ? "Bounty" : "Offer"}
-                  </span>
-                  <span className="font-semibold text-gray-900">{l.title}</span>
-                </div>
-                <span className="text-sm text-gray-400">
-                  {new Date(l.createdAt).toLocaleDateString()}
-                </span>
-              </div>
-              <p className="text-sm text-gray-600 mt-1">{l.description}</p>
-              <div className="flex gap-4 mt-2 text-sm text-gray-500">
-                <span>🏷️ {l.item}</span>
-                <span>📦 qty: {l.qty}</span>
-                <span>💰 ${l.price.toFixed(2)}</span>
-                <span className="capitalize">📌 {l.status}</span>
-              </div>
-              <p className="text-xs text-gray-400 mt-1">
-                by {l.createdBy?.name || "Unknown"}
-              </p>
-            </div>
-          ))}
         </div>
+      ) : (
+        <ul className="space-y-4">
+          {listings.map((l) => (
+            <li key={l._id}>
+              <Link
+                to={`/listings/${l._id}`}
+                className="card p-4 sm:p-5 block hover:shadow-card-hover"
+              >
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span
+                      className={`inline-block text-xs font-semibold px-2.5 py-1 rounded-full ${
+                        l.type === "demand"
+                          ? "bg-harvest-100 text-harvest-800"
+                          : "bg-leaf-100 text-leaf-800"
+                      }`}
+                    >
+                      {l.type === "demand" ? "Bounty" : "Offer"}
+                    </span>
+                    <span className="font-semibold text-earth-900">{l.title}</span>
+                    {Array.isArray(l.responses) && l.responses.length > 0 && (
+                      <span className="text-xs text-earth-500">
+                        {l.responses.length} response{l.responses.length !== 1 ? "s" : ""}
+                      </span>
+                    )}
+                  </div>
+                  <time className="text-sm text-earth-400">
+                    {new Date(l.createdAt).toLocaleDateString()}
+                  </time>
+                </div>
+                <p className="text-earth-600 text-sm mt-2 line-clamp-2">{l.description}</p>
+                <div className="flex flex-wrap gap-x-4 gap-y-1 mt-3 text-sm text-earth-500">
+                  <span>{l.item}</span>
+                  <span>Qty: {l.qty}</span>
+                  <span>${l.price.toFixed(2)}</span>
+                  <span className="capitalize">{l.status}</span>
+                </div>
+                <p className="text-xs text-earth-400 mt-2">
+                  by {l.createdBy?.name || "Unknown"}
+                </p>
+              </Link>
+            </li>
+          ))}
+        </ul>
       )}
     </div>
   );

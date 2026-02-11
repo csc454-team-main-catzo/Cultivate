@@ -8,62 +8,61 @@ export default function Layout() {
   const location = useLocation();
 
   function navLinkClass(path: string) {
-    const active = location.pathname === path || location.pathname.startsWith(path + "/");
-    return `px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+    const active =
+      location.pathname === path || location.pathname.startsWith(path + "/");
+    return `px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
       active
-        ? "bg-gray-900 text-white"
-        : "text-gray-300 hover:bg-gray-700 hover:text-white"
+        ? "bg-leaf-600 text-white"
+        : "text-earth-200 hover:bg-earth-800/60 hover:text-white"
     }`;
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Navbar */}
-      <nav className="bg-gray-800">
-        <div className="max-w-7xl mx-auto px-4">
-          <div className="flex items-center justify-between h-16">
-            {/* Left — brand + links */}
-            <div className="flex items-center gap-4">
-              <Link to="/" className="text-white font-bold text-lg">
-                🌱 Cultivate
+    <div className="min-h-screen flex flex-col bg-earth-50">
+      <nav className="bg-earth-900 border-b border-earth-700/50">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6">
+          <div className="flex items-center justify-between h-14">
+            <div className="flex items-center gap-6">
+              <Link
+                to="/"
+                className="font-display text-xl text-white tracking-tight hover:text-harvest-200 transition-colors"
+              >
+                Cultivate
               </Link>
-
-              {/* Only show nav links if fully registered */}
               {user && (
-                <div className="flex gap-2 ml-6">
+                <div className="flex gap-1">
                   <Link to="/listings" className={navLinkClass("/listings")}>
                     Listings
-                  </Link>
-                  <Link to="/listings/new" className={navLinkClass("/listings/new")}>
-                    + New
                   </Link>
                 </div>
               )}
             </div>
-
-            {/* Right — auth */}
             <div className="flex items-center gap-3">
               {isAuthenticated ? (
                 <>
                   {user && (
-                    <span className="text-gray-400 text-xs px-2 py-0.5 bg-gray-700 rounded-full">
-                      {user.role === "farmer" ? "🌾 Farmer" : "🍽️ Restaurant"}
+                    <span className="text-earth-300 text-xs font-medium px-2.5 py-1 bg-earth-800 rounded-full">
+                      {user.role === "farmer" ? "Farmer" : "Restaurant"}
                     </span>
                   )}
-                  <span className="text-gray-300 text-sm">
+                  <span className="text-earth-200 text-sm max-w-[140px] truncate">
                     {user?.name || user?.email}
                   </span>
                   <button
-                    onClick={() => logout({ logoutParams: { returnTo: window.location.origin } })}
-                    className="px-3 py-1.5 bg-red-600 text-white text-sm rounded-md hover:bg-red-700 transition-colors"
+                    type="button"
+                    onClick={() =>
+                      logout({ logoutParams: { returnTo: window.location.origin } })
+                    }
+                    className="px-3 py-1.5 text-sm font-medium rounded-lg bg-earth-700 text-earth-200 hover:bg-earth-600 hover:text-white transition-colors"
                   >
                     Log out
                   </button>
                 </>
               ) : (
                 <button
+                  type="button"
                   onClick={() => loginWithRedirect()}
-                  className="px-3 py-1.5 bg-green-600 text-white text-sm rounded-md hover:bg-green-700 transition-colors"
+                  className="btn-primary"
                 >
                   Log in
                 </button>
@@ -72,9 +71,7 @@ export default function Layout() {
           </div>
         </div>
       </nav>
-
-      {/* Page content */}
-      <main>
+      <main className="flex-1">
         <Outlet />
       </main>
     </div>

@@ -6,6 +6,8 @@ import Home from "./pages/Home"
 import Register from "./pages/Register"
 import Listings from "./pages/Listings"
 import NewListing from "./pages/NewListing"
+import ListingDetail from "./pages/ListingDetail"
+import EditListing from "./pages/EditListing"
 
 function App() {
   return (
@@ -18,6 +20,8 @@ function App() {
         <Route element={<AuthGuard />}>
           <Route path="listings" element={<Listings />} />
           <Route path="listings/new" element={<NewListing />} />
+          <Route path="listings/:id" element={<ListingDetail />} />
+          <Route path="listings/:id/edit" element={<EditListing />} />
         </Route>
       </Route>
     </Routes>

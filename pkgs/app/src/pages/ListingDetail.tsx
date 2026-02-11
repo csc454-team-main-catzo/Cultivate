@@ -1,0 +1,349 @@
+import { useEffect, useState } from "react";
+import { Link, useParams, useNavigate } from "react-router-dom";
+import { useApi } from "../providers/apiContext";
+import { useUser } from "../providers/userContext";
+import { useListingActions } from "../hooks/useListingActions";
+
+interface ResponseItem {
+  _id: string;
+  message: string;
+  price: number;
+  qty: number;
+  createdBy: { _id: string; name: string; email: string };
+  createdAt: string;
+}
+
+interface ListingDetailData {
+  _id: string;
+  type: "demand" | "supply";
+  title: string;
+  item: string;
+  description: string;
+  price: number;
+  qty: number;
+  status: string;
+  createdBy: { _id: string; name: string; email: string };
+  responses: ResponseItem[];
+  createdAt: string;
+}
+
+export default function ListingDetail() {
+  const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
+  const { listings: listingsApi } = useApi();
+  const { user } = useUser();
+  const { deleteListing } = useListingActions();
+  const [listing, setListing] = useState<ListingDetailData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Respond form
+  const [message, setMessage] = useState("");
+  const [price, setPrice] = useState("");
+  const [qty, setQty] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+
+  // Delete
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const listingId = id;
+    if (!listingId) return;
+    async function fetchListing() {
+      setLoading(true);
+      setError(null);
+      try {
+        const response = await listingsApi.getListing({ id: listingId as string });
+        const data = (response as { data?: ListingDetailData }).data ?? response;
+        setListing(data as ListingDetailData);
+      } catch (err) {
+        console.error("Failed to fetch listing:", err);
+        setError("Could not load listing.");
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchListing();
+  }, [id, listingsApi]);
+
+  async function handleSubmitResponse(e: React.FormEvent) {
+    e.preventDefault();
+    const listingId = id;
+    if (!listingId || !listing) return;
+    setSubmitError(null);
+    setSubmitting(true);
+
+    const priceNum = parseFloat(price);
+    const qtyNum = parseInt(qty, 10);
+    if (message.trim().length === 0) {
+      setSubmitError("Message is required.");
+      setSubmitting(false);
+      return;
+    }
+    if (isNaN(priceNum) || priceNum < 0) {
+      setSubmitError("Price must be 0 or greater.");
+      setSubmitting(false);
+      return;
+    }
+    if (isNaN(qtyNum) || qtyNum < 1) {
+      setSubmitError("Quantity must be at least 1.");
+      setSubmitting(false);
+      return;
+    }
+
+    try {
+      const response = await listingsApi.createListingResponse({
+        id: listingId,
+        createListingResponseRequest: {
+          message: message.trim(),
+          price: priceNum,
+          qty: qtyNum,
+        },
+      });
+      const updated = (response as { data?: ListingDetailData }).data ?? response;
+      setListing(updated as ListingDetailData);
+      setMessage("");
+      setPrice("");
+      setQty("");
+    } catch (err: unknown) {
+      const msg =
+        err && typeof err === "object" && "response" in err
+          ? (err as { response?: { data?: { error?: string } } }).response?.data?.error
+          : null;
+      setSubmitError(msg || "Failed to submit response. Please try again.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handleDelete() {
+    const listingId = id;
+    if (!listingId) return;
+    setDeleteError(null);
+    setDeleting(true);
+    try {
+      await deleteListing(listingId);
+      navigate("/listings");
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : "Failed to delete.");
+    } finally {
+      setDeleting(false);
+      setShowDeleteConfirm(false);
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[40vh]">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 border-2 border-leaf-500 border-t-transparent rounded-full animate-spin" />
+          <p className="text-earth-500 text-sm font-medium">Loading listing...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error || !listing) {
+    return (
+      <div className="max-w-2xl mx-auto px-4 py-8">
+        <p className="text-earth-600 mb-4">{error || "Listing not found."}</p>
+        <Link to="/listings" className="text-leaf-600 font-medium hover:text-leaf-700">
+          ← Back to listings
+        </Link>
+      </div>
+    );
+  }
+
+  const isOpen = listing.status === "open";
+  const isOwner = user?._id === listing.createdBy?._id;
+  const canRespond = isOpen && !isOwner;
+
+  return (
+    <div className="max-w-2xl mx-auto px-4 sm:px-6 py-8">
+      <Link
+        to="/listings"
+        className="inline-flex items-center gap-1 text-earth-600 text-sm font-medium hover:text-leaf-600 mb-6"
+      >
+        ← Back to listings
+      </Link>
+
+      <article className="card p-5 sm:p-6 mb-6">
+        <div className="flex flex-wrap items-center gap-2 mb-2">
+          <span
+            className={`inline-block text-xs font-semibold px-2.5 py-1 rounded-full ${
+              listing.type === "demand"
+                ? "bg-harvest-100 text-harvest-800"
+                : "bg-leaf-100 text-leaf-800"
+            }`}
+          >
+            {listing.type === "demand" ? "Bounty" : "Offer"}
+          </span>
+          <span className="text-xs text-earth-500 capitalize">{listing.status}</span>
+        </div>
+        <h1 className="font-display text-xl sm:text-2xl text-earth-900 mb-2">
+          {listing.title}
+        </h1>
+        <p className="text-earth-600 text-sm mb-3">{listing.description}</p>
+        <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-earth-500">
+          <span>{listing.item}</span>
+          <span>Qty: {listing.qty}</span>
+          <span>${listing.price.toFixed(2)}</span>
+        </div>
+        <p className="text-xs text-earth-400 mt-2">
+          by {listing.createdBy?.name || "Unknown"}
+        </p>
+        {isOwner && (
+          <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t border-earth-200">
+            <Link
+              to={`/listings/${listing._id}/edit`}
+              className="btn-secondary text-sm"
+            >
+              Edit listing
+            </Link>
+            <button
+              type="button"
+              onClick={() => setShowDeleteConfirm(true)}
+              className="px-3 py-1.5 text-sm font-medium rounded-lg border border-red-200 text-red-700 hover:bg-red-50 transition-colors"
+            >
+              Delete listing
+            </button>
+          </div>
+        )}
+      </article>
+
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 z-10 flex items-center justify-center p-4 bg-earth-900/50" role="dialog" aria-modal="true" aria-labelledby="delete-title">
+          <div className="card p-6 max-w-sm w-full">
+            <h2 id="delete-title" className="font-display text-lg text-earth-900 mb-2">
+              Delete this listing?
+            </h2>
+            <p className="text-earth-600 text-sm mb-4">
+              This cannot be undone. All responses will be removed.
+            </p>
+            {deleteError && (
+              <p className="text-red-600 text-sm mb-4">{deleteError}</p>
+            )}
+            <div className="flex gap-2 justify-end">
+              <button
+                type="button"
+                onClick={() => setShowDeleteConfirm(false)}
+                className="btn-secondary"
+                disabled={deleting}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleDelete}
+                disabled={deleting}
+                className="px-4 py-2 rounded-lg font-medium bg-red-600 text-white hover:bg-red-700 disabled:opacity-50"
+              >
+                {deleting ? "Deleting..." : "Delete"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Responses */}
+      <section className="mb-6">
+        <h2 className="font-display text-lg text-earth-900 mb-3">
+          Responses {listing.responses?.length ? `(${listing.responses.length})` : ""}
+        </h2>
+        {!listing.responses?.length ? (
+          <p className="text-earth-500 text-sm">No responses yet.</p>
+        ) : (
+          <ul className="space-y-3">
+            {listing.responses.map((r) => (
+              <li key={r._id} className="card p-4 border-earth-100">
+                <p className="text-earth-700 text-sm whitespace-pre-wrap">{r.message}</p>
+                <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-sm text-earth-500">
+                  <span>${r.price.toFixed(2)}</span>
+                  <span>Qty: {r.qty}</span>
+                </div>
+                <p className="text-xs text-earth-400 mt-1">
+                  by {r.createdBy?.name || "Unknown"} ·{" "}
+                  {new Date(r.createdAt).toLocaleString()}
+                </p>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      {/* Respond form */}
+      {canRespond && (
+        <section className="card p-5 sm:p-6">
+          <h2 className="font-display text-lg text-earth-900 mb-4">Respond to this listing</h2>
+          {submitError && (
+            <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">
+              {submitError}
+            </div>
+          )}
+          <form onSubmit={handleSubmitResponse} className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-earth-700 mb-1">
+                Your message <span className="text-red-500">*</span>
+              </label>
+              <textarea
+                value={message}
+                onChange={(e) => setMessage(e.target.value)}
+                placeholder="Describe your offer or interest..."
+                rows={3}
+                className="input-field resize-y min-h-[80px]"
+                maxLength={2000}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-earth-700 mb-1">
+                  Your offered price per unit ($)
+                </label>
+                <input
+                  type="number"
+                  value={price}
+                  onChange={(e) => setPrice(e.target.value)}
+                  placeholder="0.00"
+                  min="0"
+                  step="0.01"
+                  className="input-field"
+                />
+                <p className="text-earth-500 text-xs mt-1">Price you’re offering per unit (e.g. per lb).</p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-earth-700 mb-1">
+                  Quantity <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="number"
+                  value={qty}
+                  onChange={(e) => setQty(e.target.value)}
+                  placeholder="1"
+                  min="1"
+                  step="1"
+                  className="input-field"
+                />
+              </div>
+            </div>
+            <button
+              type="submit"
+              disabled={submitting}
+              className="btn-primary w-full sm:w-auto"
+            >
+              {submitting ? "Sending..." : "Send response"}
+            </button>
+          </form>
+        </section>
+      )}
+
+      {isOpen && isOwner && (
+        <p className="text-earth-500 text-sm mt-4">
+          You created this listing. Others can respond below.
+        </p>
+      )}
+    </div>
+  );
+}
