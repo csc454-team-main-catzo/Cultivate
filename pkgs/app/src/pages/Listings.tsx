@@ -63,7 +63,7 @@ export default function Listings() {
                 : "text-earth-600 hover:text-earth-800"
             }`}
           >
-            {f === "all" ? "All" : f === "demand" ? "Bounties" : "Offers"}
+            {f === "all" ? "All" : f === "demand" ? "Restaurants" : "Farmers"}
           </button>
         ))}
       </div>
@@ -104,8 +104,8 @@ export default function Listings() {
                         : l.createdBy?.role === "farmer"
                           ? "Farmer"
                           : l.type === "demand"
-                            ? "Bounty"
-                            : "Offer"}
+                            ? "Restaurant"
+                            : "Farme"}
                     </span>
                     <span className="font-semibold text-earth-900">{l.title}</span>
                     {Array.isArray(l.responses) && l.responses.length > 0 && (

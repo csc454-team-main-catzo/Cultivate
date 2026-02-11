@@ -220,8 +220,8 @@ export default function ListingDetail() {
               : listing.createdBy?.role === "farmer"
                 ? "Farmer"
                 : listing.type === "demand"
-                  ? "Bounty"
-                  : "Offer"}
+                  ? "Restaurant"
+                  : "Farmer"}
           </span>
           <span className="text-xs text-earth-500 capitalize">{listing.status}</span>
         </div>

@@ -151,7 +151,7 @@ export default function NewListing() {
             className="input-field"
           />
           <p className="text-earth-500 text-xs mt-1">
-            Price per unit (e.g. per lb, per case). Use 0 if not applicable.
+            Price per unit (per lb). Use 0 if not applicable.
           </p>
         </div>
 
@@ -168,7 +168,7 @@ export default function NewListing() {
             step="1"
             className="input-field"
           />
-          <p className="text-earth-500 text-xs mt-1">Number of units (e.g. lbs, cases).</p>
+          <p className="text-earth-500 text-xs mt-1">Number of units (lbs).</p>
         </div>
 
         <div>
