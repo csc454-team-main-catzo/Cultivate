@@ -14,14 +14,16 @@ export function UserProvider({
   children
 }: UserProviderProps) {
   const { users } = useApi();
-  const { isAuthenticated } = useAuth0();
+  const { isAuthenticated, isLoading: authLoading } = useAuth0();
   const [appUser, setAppUser] = useState<AppUser | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
 
   const refreshUser = useCallback(async () => {
     if (!isAuthenticated) {
       setAppUser(null);
+      setError(null);
+      setIsLoading(false);
       return;
     }
 
@@ -53,12 +55,22 @@ export function UserProvider({
 
   // Fetch user when authenticated
   useEffect(() => {
-    if (isAuthenticated) {
-      refreshUser();
-    } else {
-      setAppUser(null);
+    // Wait until Auth0 has finished resolving auth state before deciding
+    // whether the app user exists. This avoids flashing /register on refresh.
+    if (authLoading) {
+      setIsLoading(true);
+      return;
     }
-  }, [isAuthenticated, refreshUser]);
+
+    if (!isAuthenticated) {
+      setAppUser(null);
+      setError(null);
+      setIsLoading(false);
+      return;
+    }
+
+    refreshUser();
+  }, [authLoading, isAuthenticated, refreshUser]);
 
   return (
     <UserContext.Provider value={{ appUser, user: appUser, isLoading, error, refreshUser }}>
