@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { describeRoute, resolver, validator } from "hono-openapi";
+import CFG from "../config.js";
 import { authMiddleware } from "../middleware/auth.js";
 import type { AuthenticatedContext } from "../middleware/types.js";
 import { User } from "../models/User.js";
@@ -9,6 +10,21 @@ import {
   type UserRegisterInput,
   UserResponseSchema,
 } from "../schemas/user.js";
+
+/** Fetch user profile from Auth0 when access token lacks email/name claims */
+async function fetchAuth0UserInfo(accessToken: string): Promise<{ email?: string; name?: string }> {
+  const res = await fetch(`https://${CFG.AUTH0_DOMAIN}/userinfo`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!res.ok) {
+    throw new Error(`Auth0 userinfo failed: ${res.status}`);
+  }
+  const data = (await res.json()) as { email?: string; name?: string; nickname?: string };
+  return {
+    email: data.email,
+    name: data.name || data.nickname,
+  };
+}
 
 const users = new Hono<AuthenticatedContext>();
 
@@ -44,7 +60,7 @@ users.post(
       // WORKAROUND: hono-openapi's validator registers types differently than
       // Hono's native validator. The `as never` cast keeps TypeScript happy
       // while runtime validation comes from the middleware above.
-      const { role } = c.req.valid("json" as never) as UserRegisterInput;
+      const { role, email: bodyEmail, name: bodyName } = c.req.valid("json" as never) as UserRegisterInput;
       const auth0Id = c.get("auth0Id");
       const token = c.get("token");
       const isNewUser = c.get("isNewUser");
@@ -56,12 +72,29 @@ users.post(
         }
       }
 
-      const email = (token?.email as string) || "";
-      const name =
-        (token?.name as string) || (token?.nickname as string) || "";
+      let email = bodyEmail || (token?.email as string) || "";
+      let name = bodyName || (token?.name as string) || (token?.nickname as string) || "";
+
+      // Access tokens for custom APIs often omit email/name; try Auth0 userinfo or require from body
+      if (!email) {
+        const authHeader = c.req.header("Authorization");
+        const accessToken = authHeader?.replace(/^Bearer\s+/i, "").trim();
+        if (accessToken) {
+          try {
+            const userInfo = await fetchAuth0UserInfo(accessToken);
+            email = userInfo.email || "";
+            name = userInfo.name || name;
+          } catch (err) {
+            console.error("Auth0 userinfo error:", err);
+          }
+        }
+      }
 
       if (!email) {
-        return c.json({ error: "Email not found in token" }, 400);
+        return c.json(
+          { error: "Email not found. Ensure Auth0 includes email scope, or pass email in the request." },
+          400
+        );
       }
 
       const user = await User.create({
