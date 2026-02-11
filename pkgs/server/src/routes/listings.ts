@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { describeRoute, resolver, validator } from "hono-openapi";
 import { authMiddleware } from "../middleware/auth.js";
+import type { AuthenticatedContext } from "../middleware/types.js";
 import Listing from "../models/Listing.js";
 import {
   ListingCreateSchema,
@@ -11,14 +12,7 @@ import {
   ListingResponseSchema,
 } from "../schemas/listing.js";
 
-type Env = {
-  Variables: {
-    userId: string;
-    user: unknown;
-  };
-};
-
-const listings = new Hono<Env>();
+const listings = new Hono<AuthenticatedContext>();
 listings.use(describeRoute({
   tags: ['Listings']
 }))
@@ -112,6 +106,7 @@ listings.post(
   describeRoute({
     operationId: "createListing",
     summary: "Create a new listing (demand or supply)",
+    security: [{ bearerAuth: [] }],
     responses: {
       201: {
         description: "Listing created successfully",
@@ -125,7 +120,7 @@ listings.post(
       401: { description: "Unauthorized" },
     },
   }),
-  authMiddleware,
+  authMiddleware(),
   validator("json", ListingCreateSchema),
   async (c) => {
     try {
@@ -165,6 +160,7 @@ listings.post(
     operationId: "createListingResponse",
     summary:
       "Add a response (farmer offer) to an existing demand listing",
+    security: [{ bearerAuth: [] }],
     responses: {
       201: {
         description: "Response added, returns updated listing",
@@ -179,7 +175,7 @@ listings.post(
       404: { description: "Listing not found" },
     },
   }),
-  authMiddleware,
+  authMiddleware(),
   validator("json", ResponseCreateSchema),
   async (c) => {
     try {

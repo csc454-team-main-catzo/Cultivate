@@ -3,6 +3,7 @@ import reactLogo from './assets/react.svg'
 import viteLogo from '/vite.svg'
 import './App.css'
 import { useApi } from './providers/apiContext'
+import { AuthButton } from './components/AuthButton'
 
 function App() {
   const [count, setCount] = useState(0)
@@ -18,7 +19,7 @@ function App() {
         ; (async () => {
           try {
             const { data } = await api.misc.healthcheck({ signal: abort.signal })
-            setHelloWorld(`healthy: ${data.healthy}, server time: ${data.time}`)
+            setHelloWorld(`healthy: ${data.healthy}, server time: ${data.time}, auth: ${data.auth0Id ?? data.authenticated}`)
           } finally {
             isRunning = false
           }
@@ -55,6 +56,7 @@ function App() {
       <p className="read-the-docs">
         Click on the Vite and React logos to learn more
       </p>
+      <AuthButton />
     </>
   )
 }
