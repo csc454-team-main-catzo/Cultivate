@@ -6,6 +6,8 @@ type AppUser = RegisterUser201Response;
 interface UserContextType {
   // App user data
   appUser: AppUser | null;
+  /** Alias for appUser (for components that expect "user") */
+  user: AppUser | null;
   isLoading: boolean;
   error: Error | null;
 
