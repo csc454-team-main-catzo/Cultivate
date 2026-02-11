@@ -45,7 +45,7 @@ const { status, data } = await apiInstance.createListing(
 
 ### Authorization
 
-No authorization required
+[bearerAuth](../README.md#bearerAuth)
 
 ### HTTP request headers
 
@@ -101,7 +101,7 @@ const { status, data } = await apiInstance.createListingResponse(
 
 ### Authorization
 
-No authorization required
+[bearerAuth](../README.md#bearerAuth)
 
 ### HTTP request headers
 

@@ -1,6 +1,5 @@
 .gitignore
 .npmignore
-.openapi-generator-ignore
 README.md
 api.ts
 base.ts
@@ -16,7 +15,11 @@ docs/ListListings200ResponseInner.md
 docs/ListListings200ResponseInnerCreatedBy.md
 docs/ListListings200ResponseInnerResponsesInner.md
 docs/ListListings200ResponseInnerResponsesInnerCreatedBy.md
+docs/ListUsers200ResponseInner.md
 docs/ListingsApi.md
+docs/RegisterUser201Response.md
+docs/RegisterUserRequest.md
+docs/UsersApi.md
 git_push.sh
 index.ts
 package.json

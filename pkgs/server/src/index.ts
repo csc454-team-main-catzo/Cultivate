@@ -1,14 +1,21 @@
 import { serve } from '@hono/node-server'
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
-import { describeRoute, resolver, validator } from "hono-openapi"
+import { describeRoute, resolver } from "hono-openapi"
 import * as v from 'valibot'
 import { openAPIRouteHandler } from 'hono-openapi'
 import { connectDB } from './db.js'
-import { User } from './models/User.js'
+import { authMiddleware } from './middleware/auth.js'
 import listingRoutes from './routes/listings.js'
+import userRoutes from './routes/users.js'
 
-const app = new Hono()
+type AppBindings = {
+  // TODO: this is for convenience, by right should be a union of all middleware
+  // and router types or something.
+  Variables: any
+}
+
+const app = new Hono<AppBindings>()
 app.use(cors({
   origin: '*',
 }))
@@ -16,6 +23,8 @@ app.use(cors({
 const HealthCheckResponse = v.object({
   healthy: v.boolean(),
   time: v.date(),
+  authenticated: v.boolean(),
+  auth0Id: v.optional(v.string()),
 })
 
 app.get(
@@ -23,6 +32,7 @@ app.get(
   describeRoute({
     operationId: 'healthcheck',
     summary: 'Health check route',
+    security: [{ bearerAuth: [] }, {}],  // bearerAuth or no auth
     responses: {
       200: {
         description: 'Array of listings',
@@ -35,31 +45,22 @@ app.get(
       500: { description: 'Server error' },
     },
   }),
+  authMiddleware({ optional: true }),
   (c) => {
-    return c.json({ healthy: true, time: new Date().toISOString() })
+    const auth0Id = c.get('auth0Id')
+    const authenticated = Boolean(auth0Id)
+
+    return c.json({
+      healthy: true,
+      time: new Date().toISOString(),
+      authenticated,
+      ...(authenticated ? { auth0Id } : {}),
+    })
   },
 )
-app.post('/users', async (c) => {
-  try {
-    const body = await c.req.json()
-    const user = await User.create(body)
-    return c.json(user, 201)
-  } catch (error: any) {
-    return c.json({ error: error.message }, 400)
-  }
-})
-
-app.get('/users', async (c) => {
-  try {
-    const users = await User.find()
-    return c.json(users)
-  } catch (error: any) {
-    return c.json({ error: error.message }, 500)
-  }
-})
-
-// Mount listing routes
+// Mount resource routers
 app.route('/listings', listingRoutes)
+app.route('/users', userRoutes)
 
 app.get(
   '/openapi.json',
@@ -70,10 +71,21 @@ app.get(
         version: '0.1.0',
         description: 'test',
       },
+      components: {
+        securitySchemes: {
+          bearerAuth: {
+            type: "http",
+            scheme: "bearer",
+            bearerFormat: "JWT",
+          },
+        },
+      },
       servers: [
         {
-          // TODO: get host URL from env var.
-          url: 'http://localhost:3000',
+          url:
+            process.env.VERCEL_URL
+              ? `https://${process.env.VERCEL_URL}`
+              : process.env.API_URL || 'http://localhost:3000',
         },
       ],
     },

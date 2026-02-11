@@ -90,9 +90,11 @@ export interface CreateListingResponseRequest {
 export interface Healthcheck200Response {
     'healthy': boolean;
     'time': any;
+    'authenticated': boolean;
+    'auth0Id'?: string;
 }
 export interface ListListings200ResponseInner {
-    '_id': string;
+    '_id': string | null;
     'type': ListListings200ResponseInnerTypeEnum;
     'title': string | null;
     'item': string | null;
@@ -142,6 +144,48 @@ export interface ListListings200ResponseInnerResponsesInnerCreatedBy {
     'name': string;
     'email': string;
 }
+export interface ListUsers200ResponseInner {
+    '_id': string | null;
+    'name': string | null;
+    'email': string | null;
+    'role': ListUsers200ResponseInnerRoleEnum;
+    'createdAt': string | null;
+}
+
+export const ListUsers200ResponseInnerRoleEnum = {
+    Farmer: 'farmer',
+    Restaurant: 'restaurant'
+} as const;
+
+export type ListUsers200ResponseInnerRoleEnum = typeof ListUsers200ResponseInnerRoleEnum[keyof typeof ListUsers200ResponseInnerRoleEnum];
+
+export interface RegisterUser201Response {
+    '_id': string | null;
+    'name': string | null;
+    'email': string | null;
+    'role': RegisterUser201ResponseRoleEnum;
+    'auth0Id': string | null;
+    'createdAt': string | null;
+}
+
+export const RegisterUser201ResponseRoleEnum = {
+    Farmer: 'farmer',
+    Restaurant: 'restaurant'
+} as const;
+
+export type RegisterUser201ResponseRoleEnum = typeof RegisterUser201ResponseRoleEnum[keyof typeof RegisterUser201ResponseRoleEnum];
+
+export interface RegisterUserRequest {
+    'role': RegisterUserRequestRoleEnum;
+}
+
+export const RegisterUserRequestRoleEnum = {
+    Farmer: 'farmer',
+    Restaurant: 'restaurant'
+} as const;
+
+export type RegisterUserRequestRoleEnum = typeof RegisterUserRequestRoleEnum[keyof typeof RegisterUserRequestRoleEnum];
+
 
 /**
  * DefaultApi - axios parameter creator
@@ -166,6 +210,10 @@ export const DefaultApiAxiosParamCreator = function (configuration?: Configurati
             const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
             const localVarHeaderParameter = {} as any;
             const localVarQueryParameter = {} as any;
+
+            // authentication bearerAuth required
+            // http bearer authentication required
+            await setBearerAuthToObject(localVarHeaderParameter, configuration)
 
             localVarHeaderParameter['Accept'] = 'application/json';
 
@@ -262,6 +310,10 @@ export const ListingsApiAxiosParamCreator = function (configuration?: Configurat
             const localVarHeaderParameter = {} as any;
             const localVarQueryParameter = {} as any;
 
+            // authentication bearerAuth required
+            // http bearer authentication required
+            await setBearerAuthToObject(localVarHeaderParameter, configuration)
+
             localVarHeaderParameter['Content-Type'] = 'application/json';
             localVarHeaderParameter['Accept'] = 'application/json';
 
@@ -298,6 +350,10 @@ export const ListingsApiAxiosParamCreator = function (configuration?: Configurat
             const localVarRequestOptions = { method: 'POST', ...baseOptions, ...options};
             const localVarHeaderParameter = {} as any;
             const localVarQueryParameter = {} as any;
+
+            // authentication bearerAuth required
+            // http bearer authentication required
+            await setBearerAuthToObject(localVarHeaderParameter, configuration)
 
             localVarHeaderParameter['Content-Type'] = 'application/json';
             localVarHeaderParameter['Accept'] = 'application/json';
@@ -556,6 +612,247 @@ export class ListingsApi extends BaseAPI {
      */
     public listListings(options?: RawAxiosRequestConfig) {
         return ListingsApiFp(this.configuration).listListings(options).then((request) => request(this.axios, this.basePath));
+    }
+}
+
+
+
+/**
+ * UsersApi - axios parameter creator
+ */
+export const UsersApiAxiosParamCreator = function (configuration?: Configuration) {
+    return {
+        /**
+         * 
+         * @summary Return the authenticated user\'s profile
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getCurrentUser: async (options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            const localVarPath = `/users/me`;
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            // authentication bearerAuth required
+            // http bearer authentication required
+            await setBearerAuthToObject(localVarHeaderParameter, configuration)
+
+            localVarHeaderParameter['Accept'] = 'application/json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * 
+         * @summary List registered users (Auth0 IDs omitted)
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listUsers: async (options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            const localVarPath = `/users`;
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            // authentication bearerAuth required
+            // http bearer authentication required
+            await setBearerAuthToObject(localVarHeaderParameter, configuration)
+
+            localVarHeaderParameter['Accept'] = 'application/json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * 
+         * @summary Complete Auth0 registration by assigning a role
+         * @param {RegisterUserRequest} [registerUserRequest] 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        registerUser: async (registerUserRequest?: RegisterUserRequest, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            const localVarPath = `/users/register`;
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'POST', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            // authentication bearerAuth required
+            // http bearer authentication required
+            await setBearerAuthToObject(localVarHeaderParameter, configuration)
+
+            localVarHeaderParameter['Content-Type'] = 'application/json';
+            localVarHeaderParameter['Accept'] = 'application/json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+            localVarRequestOptions.data = serializeDataIfNeeded(registerUserRequest, localVarRequestOptions, configuration)
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+    }
+};
+
+/**
+ * UsersApi - functional programming interface
+ */
+export const UsersApiFp = function(configuration?: Configuration) {
+    const localVarAxiosParamCreator = UsersApiAxiosParamCreator(configuration)
+    return {
+        /**
+         * 
+         * @summary Return the authenticated user\'s profile
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async getCurrentUser(options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<RegisterUser201Response>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.getCurrentUser(options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['UsersApi.getCurrentUser']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         * 
+         * @summary List registered users (Auth0 IDs omitted)
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async listUsers(options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<Array<ListUsers200ResponseInner>>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.listUsers(options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['UsersApi.listUsers']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         * 
+         * @summary Complete Auth0 registration by assigning a role
+         * @param {RegisterUserRequest} [registerUserRequest] 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async registerUser(registerUserRequest?: RegisterUserRequest, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<RegisterUser201Response>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.registerUser(registerUserRequest, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['UsersApi.registerUser']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+    }
+};
+
+/**
+ * UsersApi - factory interface
+ */
+export const UsersApiFactory = function (configuration?: Configuration, basePath?: string, axios?: AxiosInstance) {
+    const localVarFp = UsersApiFp(configuration)
+    return {
+        /**
+         * 
+         * @summary Return the authenticated user\'s profile
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getCurrentUser(options?: RawAxiosRequestConfig): AxiosPromise<RegisterUser201Response> {
+            return localVarFp.getCurrentUser(options).then((request) => request(axios, basePath));
+        },
+        /**
+         * 
+         * @summary List registered users (Auth0 IDs omitted)
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listUsers(options?: RawAxiosRequestConfig): AxiosPromise<Array<ListUsers200ResponseInner>> {
+            return localVarFp.listUsers(options).then((request) => request(axios, basePath));
+        },
+        /**
+         * 
+         * @summary Complete Auth0 registration by assigning a role
+         * @param {UsersApiRegisterUserRequest} requestParameters Request parameters.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        registerUser(requestParameters: UsersApiRegisterUserRequest = {}, options?: RawAxiosRequestConfig): AxiosPromise<RegisterUser201Response> {
+            return localVarFp.registerUser(requestParameters.registerUserRequest, options).then((request) => request(axios, basePath));
+        },
+    };
+};
+
+/**
+ * Request parameters for registerUser operation in UsersApi.
+ */
+export interface UsersApiRegisterUserRequest {
+    readonly registerUserRequest?: RegisterUserRequest
+}
+
+/**
+ * UsersApi - object-oriented interface
+ */
+export class UsersApi extends BaseAPI {
+    /**
+     * 
+     * @summary Return the authenticated user\'s profile
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    public getCurrentUser(options?: RawAxiosRequestConfig) {
+        return UsersApiFp(this.configuration).getCurrentUser(options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * 
+     * @summary List registered users (Auth0 IDs omitted)
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    public listUsers(options?: RawAxiosRequestConfig) {
+        return UsersApiFp(this.configuration).listUsers(options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * 
+     * @summary Complete Auth0 registration by assigning a role
+     * @param {UsersApiRegisterUserRequest} requestParameters Request parameters.
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    public registerUser(requestParameters: UsersApiRegisterUserRequest = {}, options?: RawAxiosRequestConfig) {
+        return UsersApiFp(this.configuration).registerUser(requestParameters.registerUserRequest, options).then((request) => request(this.axios, this.basePath));
     }
 }
 
