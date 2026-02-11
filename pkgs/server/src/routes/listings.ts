@@ -2,12 +2,14 @@ import { Hono } from "hono";
 import { describeRoute, resolver, validator } from "hono-openapi";
 import { authMiddleware } from "../middleware/auth.js";
 import type { AuthenticatedContext } from "../middleware/types.js";
-import Listing from "../models/Listing.js";
+import Listing, { type IResponse } from "../models/Listing.js";
 import {
   ListingCreateSchema,
   type ListingCreateInput,
   ListingUpdateSchema,
   type ListingUpdateInput,
+  MatchRequestSchema,
+  type MatchRequestInput,
   ResponseCreateSchema,
   type ResponseCreateInput,
   ListingListResponseSchema,
@@ -49,8 +51,8 @@ listings.get(
       }
 
       const all = await Listing.find(filter)
-        .populate("createdBy", "name email")
-        .populate("responses.createdBy", "name email")
+        .populate("createdBy", "name email role")
+        .populate("responses.createdBy", "name email role")
         .sort({ createdAt: -1 });
 
       // .toJSON() respects schema defaults, so null fields appear
@@ -85,8 +87,8 @@ listings.get(
   async (c) => {
     try {
       const listing = await Listing.findById(c.req.param("id"))
-        .populate("createdBy", "name email")
-        .populate("responses.createdBy", "name email");
+        .populate("createdBy", "name email role")
+        .populate("responses.createdBy", "name email role");
 
       if (!listing) {
         return c.json({ error: "Listing not found" }, 404);
@@ -139,7 +141,7 @@ listings.post(
       });
 
       const populated = await Listing.findById(listing._id)
-        .populate("createdBy", "name email")
+        .populate("createdBy", "name email role")
         .lean();
 
       return c.json(populated, 201);
@@ -207,11 +209,84 @@ listings.post(
       await listing.save();
 
       const populated = await Listing.findById(listing._id)
-        .populate("createdBy", "name email")
-        .populate("responses.createdBy", "name email")
+        .populate("createdBy", "name email role")
+        .populate("responses.createdBy", "name email role")
         .lean();
 
       return c.json(populated, 201);
+    } catch (err: unknown) {
+      if (err instanceof Error && err.name === "ValidationError") {
+        return c.json({ error: err.message }, 400);
+      }
+      const message = err instanceof Error ? err.message : "Unknown error";
+      return c.json({ error: message }, 500);
+    }
+  }
+);
+
+/* ------------------------------------------------------------------ */
+/*  POST /listings/:id/match — auth required, owner matches a response */
+/* ------------------------------------------------------------------ */
+listings.post(
+  "/:id/match",
+  describeRoute({
+    operationId: "matchListingResponse",
+    summary: "Match with a response (owner only). Sets listing status to matched.",
+    security: [{ bearerAuth: [] }],
+    responses: {
+      200: {
+        description: "Listing updated with matched response",
+        content: {
+          "application/json": {
+            schema: resolver(ListingResponseSchema),
+          },
+        },
+      },
+      400: { description: "Listing not open or invalid response" },
+      401: { description: "Unauthorized" },
+      403: { description: "Forbidden — not the listing owner" },
+      404: { description: "Listing not found" },
+    },
+  }),
+  authMiddleware(),
+  validator("json", MatchRequestSchema),
+  async (c) => {
+    try {
+      const listingId = c.req.param("id");
+      const { responseId } = c.req.valid("json" as never) as MatchRequestInput;
+      const userId = c.get("userId");
+
+      const listing = await Listing.findById(listingId);
+      if (!listing) {
+        return c.json({ error: "Listing not found" }, 404);
+      }
+      if (listing.createdBy.toString() !== userId) {
+        return c.json({ error: "Only the listing owner can match a response" }, 403);
+      }
+      if (listing.status !== "open") {
+        return c.json(
+          { error: "Can only match a response when the listing is open" },
+          400
+        );
+      }
+
+      const responseExists = listing.responses.some(
+        (r: IResponse) => r._id.toString() === responseId
+      );
+      if (!responseExists) {
+        return c.json({ error: "Response not found for this listing" }, 400);
+      }
+
+      listing.matchedResponseId = responseId as any;
+      listing.status = "matched";
+      await listing.save();
+
+      const populated = await Listing.findById(listing._id)
+        .populate("createdBy", "name email role")
+        .populate("responses.createdBy", "name email role")
+        .lean();
+
+      return c.json(populated, 200);
     } catch (err: unknown) {
       if (err instanceof Error && err.name === "ValidationError") {
         return c.json({ error: err.message }, 400);
@@ -273,8 +348,8 @@ listings.patch(
       await listing.save();
 
       const populated = await Listing.findById(listing._id)
-        .populate("createdBy", "name email")
-        .populate("responses.createdBy", "name email")
+        .populate("createdBy", "name email role")
+        .populate("responses.createdBy", "name email role")
         .lean();
 
       return c.json(populated, 200);

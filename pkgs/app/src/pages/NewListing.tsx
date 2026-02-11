@@ -1,9 +1,8 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useApi } from "../providers/apiContext";
+import { useUser } from "../providers/userContext";
 import { geocodeZipCode } from "../utils/geocode";
-
-type Tab = "supply" | "demand";
 
 interface FormState {
   title: string;
@@ -26,20 +25,10 @@ const INITIAL_FORM: FormState = {
 export default function NewListing() {
   const navigate = useNavigate();
   const { listings: listingsApi } = useApi();
-  const [tab, setTab] = useState<Tab>("supply");
+  const { user } = useUser();
   const [form, setForm] = useState<FormState>(INITIAL_FORM);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-
-  function resetForm() {
-    setForm(INITIAL_FORM);
-    setError(null);
-  }
-
-  function switchTab(newTab: Tab) {
-    setTab(newTab);
-    resetForm();
-  }
 
   function updateField(field: keyof FormState, value: string) {
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -52,47 +41,34 @@ export default function NewListing() {
     setSubmitting(true);
 
     try {
+      if (!form.title.trim()) throw new Error("Title is required");
+      if (!form.item.trim()) throw new Error("Item is required");
+      if (!form.description.trim()) throw new Error("Description is required");
+
       const price = parseFloat(form.price);
       const qty = parseInt(form.qty, 10);
       if (isNaN(qty) || qty < 1) {
         throw new Error("Quantity must be at least 1");
       }
+      if (isNaN(price) || price < 0) {
+        throw new Error("Price per unit must be 0 or greater");
+      }
 
       const latLng = await geocodeZipCode(form.zipCode);
 
-      if (tab === "supply") {
-        if (!form.item.trim()) throw new Error("Item is required");
-        if (!form.description.trim()) throw new Error("Description is required");
-        if (isNaN(price) || price < 0) throw new Error("Price per unit must be 0 or greater");
+      const type = user?.role === "farmer" ? "supply" : "demand";
 
-        await listingsApi.createListing({
-          createListingRequest: {
-            type: "supply",
-            title: form.title.trim() || form.item.trim(),
-            item: form.item.trim(),
-            description: form.description.trim(),
-            price,
-            qty,
-            latLng,
-          },
-        });
-      } else {
-        if (!form.title.trim()) throw new Error("Title is required");
-        if (!form.item.trim()) throw new Error("Item is required");
-        if (!form.description.trim()) throw new Error("Description is required");
-
-        await listingsApi.createListing({
-          createListingRequest: {
-            type: "demand",
-            title: form.title.trim(),
-            item: form.item.trim(),
-            description: form.description.trim(),
-            price: isNaN(price) || price < 0 ? 0 : price,
-            qty,
-            latLng,
-          },
-        });
-      }
+      await listingsApi.createListing({
+        createListingRequest: {
+          type,
+          title: form.title.trim(),
+          item: form.item.trim(),
+          description: form.description.trim(),
+          price,
+          qty,
+          latLng,
+        },
+      });
 
       navigate("/listings");
     } catch (err: unknown) {
@@ -112,31 +88,6 @@ export default function NewListing() {
         Create listing
       </h1>
 
-      <div className="flex border-b border-earth-200 mb-6">
-        <button
-          type="button"
-          onClick={() => switchTab("supply")}
-          className={`px-5 py-3 text-sm font-medium border-b-2 transition-colors ${
-            tab === "supply"
-              ? "border-leaf-600 text-leaf-700"
-              : "border-transparent text-earth-500 hover:text-earth-700"
-          }`}
-        >
-          Offer (Farmer)
-        </button>
-        <button
-          type="button"
-          onClick={() => switchTab("demand")}
-          className={`px-5 py-3 text-sm font-medium border-b-2 transition-colors ${
-            tab === "demand"
-              ? "border-harvest-600 text-harvest-700"
-              : "border-transparent text-earth-500 hover:text-earth-700"
-          }`}
-        >
-          Bounty (Restaurant)
-        </button>
-      </div>
-
       {error && (
         <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">
           {error}
@@ -144,21 +95,19 @@ export default function NewListing() {
       )}
 
       <form onSubmit={handleSubmit} className="space-y-4">
-        {tab === "demand" && (
-          <div>
-            <label className="block text-sm font-medium text-earth-700 mb-1">
-              Title <span className="text-red-500">*</span>
-            </label>
-            <input
-              type="text"
-              value={form.title}
-              onChange={(e) => updateField("title", e.target.value)}
-              placeholder="e.g. Looking for organic tomatoes"
-              className="input-field"
-              maxLength={150}
-            />
-          </div>
-        )}
+        <div>
+          <label className="block text-sm font-medium text-earth-700 mb-1">
+            Title <span className="text-red-500">*</span>
+          </label>
+          <input
+            type="text"
+            value={form.title}
+            onChange={(e) => updateField("title", e.target.value)}
+            placeholder="e.g. Looking for organic tomatoes"
+            className="input-field"
+            maxLength={150}
+          />
+        </div>
 
         <div>
           <label className="block text-sm font-medium text-earth-700 mb-1">
@@ -181,11 +130,7 @@ export default function NewListing() {
           <textarea
             value={form.description}
             onChange={(e) => updateField("description", e.target.value)}
-            placeholder={
-              tab === "supply"
-                ? "Describe your produce — variety, freshness, organic, etc."
-                : "Describe what you need — variety, quality requirements, etc."
-            }
+            placeholder="Describe what you're offering or looking for — variety, quality, etc."
             rows={3}
             className="input-field resize-y min-h-[80px]"
             maxLength={2000}
@@ -194,13 +139,7 @@ export default function NewListing() {
 
         <div>
           <label className="block text-sm font-medium text-earth-700 mb-1">
-            {tab === "supply"
-              ? "Price per unit ($)"
-              : "Your max budget per unit ($)"}{" "}
-            {tab === "supply" && <span className="text-red-500">*</span>}
-            {tab === "demand" && (
-              <span className="text-earth-400 text-xs font-normal">(optional)</span>
-            )}
+            Price per unit ($) <span className="text-red-500">*</span>
           </label>
           <input
             type="number"
@@ -212,9 +151,7 @@ export default function NewListing() {
             className="input-field"
           />
           <p className="text-earth-500 text-xs mt-1">
-            {tab === "supply"
-              ? "What you charge per unit (e.g. per lb, per case)."
-              : "Maximum you're willing to pay per unit, if any."}
+            Price per unit (e.g. per lb, per case). Use 0 if not applicable.
           </p>
         </div>
 
@@ -254,19 +191,9 @@ export default function NewListing() {
         <button
           type="submit"
           disabled={submitting}
-          className={`w-full py-3 px-4 rounded-lg font-medium transition-colors ${
-            submitting
-              ? "bg-earth-300 text-earth-500 cursor-not-allowed"
-              : tab === "supply"
-                ? "bg-leaf-600 text-white hover:bg-leaf-700"
-                : "bg-harvest-600 text-white hover:bg-harvest-700"
-          }`}
+          className="w-full py-3 px-4 rounded-lg font-medium bg-leaf-600 text-white hover:bg-leaf-700 disabled:bg-earth-300 disabled:text-earth-500 transition-colors"
         >
-          {submitting
-            ? "Creating..."
-            : tab === "supply"
-              ? "Post offer"
-              : "Post bounty"}
+          {submitting ? "Creating..." : "Create listing"}
         </button>
       </form>
     </div>

@@ -11,7 +11,7 @@ interface Listing {
   price: number;
   qty: number;
   status: string;
-  createdBy: { _id: string; name: string; email: string };
+  createdBy: { _id: string; name: string; email: string; role?: "farmer" | "restaurant" };
   responses?: unknown[];
   createdAt: string;
 }
@@ -94,12 +94,18 @@ export default function Listings() {
                   <div className="flex flex-wrap items-center gap-2">
                     <span
                       className={`inline-block text-xs font-semibold px-2.5 py-1 rounded-full ${
-                        l.type === "demand"
+                        l.createdBy?.role === "restaurant"
                           ? "bg-harvest-100 text-harvest-800"
                           : "bg-leaf-100 text-leaf-800"
                       }`}
                     >
-                      {l.type === "demand" ? "Bounty" : "Offer"}
+                      {l.createdBy?.role === "restaurant"
+                        ? "Restaurant"
+                        : l.createdBy?.role === "farmer"
+                          ? "Farmer"
+                          : l.type === "demand"
+                            ? "Bounty"
+                            : "Offer"}
                     </span>
                     <span className="font-semibold text-earth-900">{l.title}</span>
                     {Array.isArray(l.responses) && l.responses.length > 0 && (

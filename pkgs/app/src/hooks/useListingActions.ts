@@ -57,5 +57,22 @@ export function useListingActions() {
     [getAuthHeaders]
   );
 
-  return { updateListing, deleteListing };
+  const matchListingResponse = useCallback(
+    async (listingId: string, responseId: string) => {
+      const headers = await getAuthHeaders();
+      const res = await fetch(`${CFG.API_URL}/listings/${listingId}/match`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ responseId }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error((data as { error?: string }).error || "Failed to match response");
+      }
+      return res.json();
+    },
+    [getAuthHeaders]
+  );
+
+  return { updateListing, deleteListing, matchListingResponse };
 }

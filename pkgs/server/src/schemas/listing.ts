@@ -18,6 +18,7 @@ const PopulatedUserSchema = v.object({
   _id: v.string(),
   name: v.string(),
   email: v.string(),
+  role: v.optional(v.picklist(["farmer", "restaurant"])),
 });
 
 const ResponseSubdocSchema = v.object({
@@ -107,6 +108,16 @@ export const ListingUpdateSchema = v.partial(
 );
 
 export type ListingUpdateInput = v.InferOutput<typeof ListingUpdateSchema>;
+
+/** Match with a response (owner only; sets status to matched) */
+export const MatchRequestSchema = v.object({
+  responseId: v.pipe(
+    v.string(),
+    v.minLength(1, "Response ID is required")
+  ),
+});
+
+export type MatchRequestInput = v.InferOutput<typeof MatchRequestSchema>;
 
 /** Add a response to an existing listing */
 export const ResponseCreateSchema = v.object({

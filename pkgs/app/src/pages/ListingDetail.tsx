@@ -22,7 +22,8 @@ interface ListingDetailData {
   price: number;
   qty: number;
   status: string;
-  createdBy: { _id: string; name: string; email: string };
+  matchedResponseId: string | null;
+  createdBy: { _id: string; name: string; email: string; role?: "farmer" | "restaurant" };
   responses: ResponseItem[];
   createdAt: string;
 }
@@ -32,7 +33,7 @@ export default function ListingDetail() {
   const navigate = useNavigate();
   const { listings: listingsApi } = useApi();
   const { user } = useUser();
-  const { deleteListing } = useListingActions();
+  const { deleteListing, updateListing, matchListingResponse } = useListingActions();
   const [listing, setListing] = useState<ListingDetailData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -48,6 +49,11 @@ export default function ListingDetail() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  // Match / Fulfilled
+  const [matchingResponseId, setMatchingResponseId] = useState<string | null>(null);
+  const [fulfilling, setFulfilling] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   useEffect(() => {
     const listingId = id;
@@ -135,6 +141,36 @@ export default function ListingDetail() {
     }
   }
 
+  async function handleMatch(responseId: string) {
+    const listingId = id;
+    if (!listingId) return;
+    setActionError(null);
+    setMatchingResponseId(responseId);
+    try {
+      const updated = await matchListingResponse(listingId, responseId);
+      setListing(updated as ListingDetailData);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Failed to match.");
+    } finally {
+      setMatchingResponseId(null);
+    }
+  }
+
+  async function handleMarkFulfilled() {
+    const listingId = id;
+    if (!listingId) return;
+    setActionError(null);
+    setFulfilling(true);
+    try {
+      const updated = await updateListing(listingId, { status: "fulfilled" });
+      setListing(updated as ListingDetailData);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Failed to update.");
+    } finally {
+      setFulfilling(false);
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[40vh]">
@@ -174,12 +210,18 @@ export default function ListingDetail() {
         <div className="flex flex-wrap items-center gap-2 mb-2">
           <span
             className={`inline-block text-xs font-semibold px-2.5 py-1 rounded-full ${
-              listing.type === "demand"
+              listing.createdBy?.role === "restaurant"
                 ? "bg-harvest-100 text-harvest-800"
                 : "bg-leaf-100 text-leaf-800"
             }`}
           >
-            {listing.type === "demand" ? "Bounty" : "Offer"}
+            {listing.createdBy?.role === "restaurant"
+              ? "Restaurant"
+              : listing.createdBy?.role === "farmer"
+                ? "Farmer"
+                : listing.type === "demand"
+                  ? "Bounty"
+                  : "Offer"}
           </span>
           <span className="text-xs text-earth-500 capitalize">{listing.status}</span>
         </div>
@@ -248,6 +290,12 @@ export default function ListingDetail() {
         </div>
       )}
 
+      {actionError && (
+        <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">
+          {actionError}
+        </div>
+      )}
+
       {/* Responses */}
       <section className="mb-6">
         <h2 className="font-display text-lg text-earth-900 mb-3">
@@ -257,20 +305,61 @@ export default function ListingDetail() {
           <p className="text-earth-500 text-sm">No responses yet.</p>
         ) : (
           <ul className="space-y-3">
-            {listing.responses.map((r) => (
-              <li key={r._id} className="card p-4 border-earth-100">
-                <p className="text-earth-700 text-sm whitespace-pre-wrap">{r.message}</p>
-                <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-sm text-earth-500">
-                  <span>${r.price.toFixed(2)}</span>
-                  <span>Qty: {r.qty}</span>
-                </div>
-                <p className="text-xs text-earth-400 mt-1">
-                  by {r.createdBy?.name || "Unknown"} ·{" "}
-                  {new Date(r.createdAt).toLocaleString()}
-                </p>
-              </li>
-            ))}
+            {listing.responses.map((r) => {
+              const isMatched = listing.matchedResponseId != null && r._id === listing.matchedResponseId;
+              const canMatch = isOwner && listing.status === "open" && !isMatched;
+              return (
+                <li
+                  key={r._id}
+                  className={`card p-4 border-earth-100 ${isMatched ? "ring-2 ring-leaf-500 bg-leaf-50/50" : ""}`}
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-earth-700 text-sm whitespace-pre-wrap">{r.message}</p>
+                      <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-sm text-earth-500">
+                        <span>${r.price.toFixed(2)}</span>
+                        <span>Qty: {r.qty}</span>
+                      </div>
+                      <p className="text-xs text-earth-400 mt-1">
+                        by {r.createdBy?.name || "Unknown"} ·{" "}
+                        {new Date(r.createdAt).toLocaleString()}
+                      </p>
+                    </div>
+                    {isMatched && (
+                      <span className="shrink-0 text-xs font-semibold px-2.5 py-1 rounded-full bg-leaf-200 text-leaf-800">
+                        Matched
+                      </span>
+                    )}
+                    {canMatch && (
+                      <button
+                        type="button"
+                        onClick={() => handleMatch(r._id)}
+                        disabled={matchingResponseId !== null}
+                        className="shrink-0 btn-primary text-sm py-1.5 px-3"
+                      >
+                        {matchingResponseId === r._id ? "Matching..." : "Match"}
+                      </button>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
           </ul>
+        )}
+        {isOwner && listing.status === "matched" && (
+          <div className="mt-4">
+            <button
+              type="button"
+              onClick={handleMarkFulfilled}
+              disabled={fulfilling}
+              className="btn-primary"
+            >
+              {fulfilling ? "Updating..." : "Mark as fulfilled"}
+            </button>
+            <p className="text-earth-500 text-xs mt-1">
+              Mark this listing as fulfilled when the exchange is complete.
+            </p>
+          </div>
         )}
       </section>
 
@@ -341,7 +430,12 @@ export default function ListingDetail() {
 
       {isOpen && isOwner && (
         <p className="text-earth-500 text-sm mt-4">
-          You created this listing. Others can respond below.
+          You created this listing. Match with a response above, or use Edit/Delete to manage it.
+        </p>
+      )}
+      {listing.status === "matched" && isOwner && (
+        <p className="text-earth-500 text-sm mt-4">
+          You've matched with a response. Mark as fulfilled when the exchange is complete.
         </p>
       )}
     </div>
