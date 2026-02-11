@@ -7,6 +7,8 @@ export const UserRoleSchema = v.picklist(
 
 export const UserRegisterSchema = v.object({
   role: UserRoleSchema,
+  email: v.optional(v.string()),
+  name: v.optional(v.string()),
 });
 
 export type UserRegisterInput = v.InferOutput<typeof UserRegisterSchema>;

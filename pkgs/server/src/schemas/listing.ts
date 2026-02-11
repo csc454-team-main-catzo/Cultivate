@@ -18,6 +18,7 @@ const PopulatedUserSchema = v.object({
   _id: v.string(),
   name: v.string(),
   email: v.string(),
+  role: v.optional(v.picklist(["farmer", "restaurant"])),
 });
 
 const ResponseSubdocSchema = v.object({
@@ -68,6 +69,55 @@ export const ListingCreateSchema = v.object({
 });
 
 export type ListingCreateInput = v.InferOutput<typeof ListingCreateSchema>;
+
+/** Update an existing listing (partial; owner only) */
+export const ListingUpdateSchema = v.partial(
+  v.object({
+    title: v.pipe(
+      v.string(),
+      v.minLength(1, "Title cannot be empty"),
+      v.maxLength(150, "Title cannot exceed 150 characters")
+    ),
+    item: v.pipe(
+      v.string(),
+      v.minLength(1, "Item cannot be empty"),
+      v.maxLength(100, "Item cannot exceed 100 characters")
+    ),
+    description: v.pipe(
+      v.string(),
+      v.minLength(1, "Description cannot be empty"),
+      v.maxLength(2000, "Description cannot exceed 2000 characters")
+    ),
+    price: v.pipe(v.number(), v.minValue(0, "Price cannot be negative")),
+    qty: v.pipe(v.number(), v.minValue(1, "Quantity must be at least 1")),
+    status: ListingStatusSchema,
+    latLng: v.pipe(
+      v.array(v.number()),
+      v.length(2, "latLng must be exactly [latitude, longitude]"),
+      v.check(
+        (val) => val[0] >= -90 && val[0] <= 90,
+        "Latitude must be between -90 and 90"
+      ),
+      v.check(
+        (val) => val[1] >= -180 && val[1] <= 180,
+        "Longitude must be between -180 and 180"
+      ),
+      v.transform((val) => val as [number, number])
+    ),
+  })
+);
+
+export type ListingUpdateInput = v.InferOutput<typeof ListingUpdateSchema>;
+
+/** Match with a response (owner only; sets status to matched) */
+export const MatchRequestSchema = v.object({
+  responseId: v.pipe(
+    v.string(),
+    v.minLength(1, "Response ID is required")
+  ),
+});
+
+export type MatchRequestInput = v.InferOutput<typeof MatchRequestSchema>;
 
 /** Add a response to an existing listing */
 export const ResponseCreateSchema = v.object({

@@ -116,10 +116,12 @@ export const authMiddleware = (options: AuthMiddlewareOptions = {}) => {
         return;
       }
 
-      // Update user info from token if needed (in case it changed in Auth0)
-      if (user.email !== email || user.name !== name) {
-        user.email = email;
-        user.name = name;
+      // Update user info from token if we have valid values (access tokens often omit email/name)
+      const emailChanged = email && user.email !== email;
+      const nameChanged = name && user.name !== name;
+      if (emailChanged || nameChanged) {
+        if (email) user.email = email;
+        if (name) user.name = name;
         await user.save();
       }
 
@@ -132,8 +134,13 @@ export const authMiddleware = (options: AuthMiddlewareOptions = {}) => {
       if (error.code === "ERR_JWT_EXPIRED") {
         return c.json({ error: "Token expired" }, 401);
       }
-      if (error.code === "ERR_JWT_INVALID") {
-        return c.json({ error: "Invalid token" }, 401);
+      if (error.code === "ERR_JWT_INVALID" || error.code === "ERR_JWT_CLAIM_VALIDATION_FAILED") {
+        console.error("Auth middleware JWT error:", error.message);
+        const hint =
+          error.code === "ERR_JWT_CLAIM_VALIDATION_FAILED"
+            ? " Token audience/issuer may not match. Ensure an Auth0 API exists with identifier matching AUTH0_AUDIENCE."
+            : "";
+        return c.json({ error: `Invalid token.${hint}` }, 401);
       }
       console.error("Auth middleware error:", error);
       return c.json({ error: "Authentication failed" }, 401);

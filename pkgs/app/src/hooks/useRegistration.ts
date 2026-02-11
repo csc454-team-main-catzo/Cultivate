@@ -8,7 +8,7 @@ import { useUser } from '../providers/userContext';
  * Separates registration logic from user context
  */
 export function useRegistration() {
-  const { isAuthenticated } = useAuth0();
+  const { isAuthenticated, user: authUser } = useAuth0();
   const { users } = useApi();
   const { refreshUser } = useUser();
   const [isLoading, setIsLoading] = useState(false);
@@ -23,7 +23,14 @@ export function useRegistration() {
     setError(null);
 
     try {
-      await users.registerUser({ registerUserRequest: { role } });
+      const registerPayload = {
+        role,
+        ...(authUser?.email && { email: authUser.email }),
+        ...(authUser?.name && { name: authUser.name }),
+      };
+      await users.registerUser({
+        registerUserRequest: registerPayload as { role: 'farmer' | 'restaurant' },
+      });
       // Refresh user data after registration
       await refreshUser();
     } catch (err) {

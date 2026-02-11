@@ -61,8 +61,7 @@ export function UserProvider({
   }, [isAuthenticated, refreshUser]);
 
   return (
-    <UserContext.Provider value={{ appUser, isLoading, error, refreshUser }
-    }>
+    <UserContext.Provider value={{ appUser, user: appUser, isLoading, error, refreshUser }}>
       {children}
     </UserContext.Provider>
   );
