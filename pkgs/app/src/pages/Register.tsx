@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Navigate, useNavigate } from "react-router-dom";
 import { useRegistration } from "../hooks/useRegistration";
 import { useUser } from "../providers/userContext";
 
@@ -11,8 +11,7 @@ export default function Register() {
 
   // Already registered — redirect to listings
   if (user) {
-    navigate("/", { replace: true });
-    return null;
+    return <Navigate to="/" replace />;
   }
 
   async function handleRegister() {

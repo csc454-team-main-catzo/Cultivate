@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { useAuth0 } from "@auth0/auth0-react";
 import { Outlet, useLocation } from "react-router-dom";
 
@@ -8,6 +9,14 @@ import { Outlet, useLocation } from "react-router-dom";
 export default function AuthOnly() {
   const location = useLocation();
   const { isAuthenticated, isLoading, loginWithRedirect } = useAuth0();
+  const hasTriggeredLogin = useRef(false);
+
+  useEffect(() => {
+    if (!isLoading && !isAuthenticated && !hasTriggeredLogin.current) {
+      hasTriggeredLogin.current = true;
+      loginWithRedirect({ appState: { returnTo: location.pathname } });
+    }
+  }, [isLoading, isAuthenticated, loginWithRedirect, location.pathname]);
 
   if (isLoading) {
     return (
@@ -18,10 +27,9 @@ export default function AuthOnly() {
   }
 
   if (!isAuthenticated) {
-    loginWithRedirect({ appState: { returnTo: location.pathname } });
     return (
       <div className="flex items-center justify-center min-h-[50vh]">
-        <p className="text-gray-500">Redirecting to login...</p>
+        <p className="text-gray-500">Loading...</p>
       </div>
     );
   }
