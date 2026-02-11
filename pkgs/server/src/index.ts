@@ -28,7 +28,7 @@ const HealthCheckResponse = v.object({
 })
 
 app.get(
-  '/api/health',
+  '/health',
   describeRoute({
     operationId: 'healthcheck',
     summary: 'Health check route',
@@ -58,9 +58,9 @@ app.get(
     })
   },
 )
-// Mount resource routers under /api to avoid SPA route collisions
-app.route('/api/listings', listingRoutes)
-app.route('/api/users', userRoutes)
+// Mount resource routers
+app.route('/listings', listingRoutes)
+app.route('/users', userRoutes)
 
 app.get(
   '/openapi.json',
