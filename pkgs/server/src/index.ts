@@ -82,8 +82,10 @@ app.get(
       },
       servers: [
         {
-          // TODO: get host URL from env var.
-          url: 'http://localhost:3000',
+          url:
+            process.env.VERCEL_URL
+              ? `https://${process.env.VERCEL_URL}`
+              : process.env.API_URL || 'http://localhost:3000',
         },
       ],
     },
