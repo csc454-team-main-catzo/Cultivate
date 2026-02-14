@@ -18,7 +18,7 @@ const PopulatedUserSchema = v.object({
   _id: v.string(),
   name: v.string(),
   email: v.string(),
-  role: v.optional(v.picklist(["farmer", "restaurant"])),
+  role: v.optional(v.picklist(["farmer", "restaurant", "admin"])),
 });
 
 const ResponseSubdocSchema = v.object({
