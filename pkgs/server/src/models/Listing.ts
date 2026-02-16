@@ -54,6 +54,7 @@ export interface IListing extends Document {
   description: string;
   price: number;
   qty: number;
+  photos: Array<{ imageId: string }>;
   latLng: [number, number];
   createdBy: Types.ObjectId;
   matchedResponseId: Types.ObjectId | null;
@@ -101,6 +102,18 @@ const ListingSchema = new Schema<IListing>(
       type: Number,
       required: [true, "Quantity is required"],
       min: [1, "Quantity must be at least 1"],
+    },
+    photos: {
+      type: [
+        {
+          imageId: {
+            type: String,
+            required: [true, "Photo imageId is required"],
+            trim: true,
+          },
+        },
+      ],
+      default: [],
     },
     latLng: {
       type: [Number],

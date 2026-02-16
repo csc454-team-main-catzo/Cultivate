@@ -12,6 +12,61 @@ export interface UpdateListingBody {
   latLng?: [number, number];
 }
 
+export interface CreateListingBody {
+  type: "demand" | "supply";
+  title: string;
+  item: string;
+  description: string;
+  price: number;
+  qty: number;
+  latLng: [number, number];
+  photos?: Array<{ imageId: string }>;
+}
+
+export interface UploadImageResponse {
+  imageId: string;
+  filename?: string;
+  mimeType?: string;
+  size?: number;
+}
+
+export interface DraftReason {
+  desc: string;
+  score: number;
+  topicality?: number;
+}
+
+export interface DraftSuggestedFields {
+  itemId: string | null;
+  itemName: string | null;
+  title: string | null;
+  description: string;
+  price?: number | null;
+  unit?: string | null;
+  priceUnit?: string | null;
+  unitOptions?: string[];
+  priceUnitOptions?: string[];
+  quality: null;
+  attributes?: Record<string, unknown> | null;
+}
+
+export interface DraftFromImageResponse {
+  draftSuggestionId: string;
+  imageId: string;
+  suggestedFields: DraftSuggestedFields;
+  confidence: number;
+  reasons: DraftReason[];
+}
+
+export class ApiStatusError extends Error {
+  status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.status = status;
+  }
+}
+
 export function useListingActions() {
   const { getAccessTokenSilently } = useAuth0();
 
@@ -38,6 +93,25 @@ export function useListingActions() {
         throw new Error((data as { error?: string }).error || "Failed to update listing");
       }
       return res.json();
+    },
+    [getAuthHeaders]
+  );
+
+  const createListing = useCallback(
+    async (body: CreateListingBody) => {
+      const headers = await getAuthHeaders();
+      const res = await fetch(`${CFG.API_URL}/api/listings`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(body),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(
+          (data as { error?: string }).error || "Failed to create listing"
+        );
+      }
+      return data;
     },
     [getAuthHeaders]
   );
@@ -74,5 +148,79 @@ export function useListingActions() {
     [getAuthHeaders]
   );
 
-  return { updateListing, deleteListing, matchListingResponse };
+  const uploadImage = useCallback(
+    async (file: File): Promise<UploadImageResponse> => {
+      const token = await getAccessTokenSilently({
+        authorizationParams: { audience: import.meta.env.VITE_AUTH0_AUDIENCE },
+      });
+      const formData = new FormData();
+      formData.append("image", file);
+
+      const res = await fetch(`${CFG.API_URL}/api/images/upload`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        body: formData,
+      });
+
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        imageId?: string;
+        filename?: string;
+        mimeType?: string;
+        size?: number;
+      };
+
+      if (!res.ok) {
+        throw new ApiStatusError(
+          res.status,
+          data.error || "Failed to upload image"
+        );
+      }
+
+      if (!data.imageId) {
+        throw new Error("Upload response missing imageId");
+      }
+
+      return {
+        imageId: data.imageId,
+        filename: data.filename,
+        mimeType: data.mimeType,
+        size: data.size,
+      };
+    },
+    [getAccessTokenSilently]
+  );
+
+  const getDraft = useCallback(
+    async (imageId: string): Promise<DraftFromImageResponse> => {
+      const headers = await getAuthHeaders();
+      const res = await fetch(`${CFG.API_URL}/api/listings/draft-from-image`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ imageId }),
+      });
+      const data = (await res.json().catch(() => ({}))) as DraftFromImageResponse & {
+        error?: string;
+      };
+      if (!res.ok) {
+        throw new ApiStatusError(
+          res.status,
+          data.error || "Failed to generate draft"
+        );
+      }
+      return data;
+    },
+    [getAuthHeaders]
+  );
+
+  return {
+    createListing,
+    updateListing,
+    deleteListing,
+    matchListingResponse,
+    uploadImage,
+    getDraft,
+  };
 }

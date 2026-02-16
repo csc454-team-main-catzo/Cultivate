@@ -5,6 +5,11 @@ interface ISuggestedFields {
   itemName: string | null;
   title: string | null;
   description: string;
+  price?: number | null;
+  unit?: string | null;
+  priceUnit?: string | null;
+  unitOptions?: string[] | null;
+  priceUnitOptions?: string[] | null;
   quality: null;
   attributes?: Record<string, unknown> | null;
 }
@@ -41,6 +46,11 @@ const DraftSuggestionSchema = new Schema<IDraftSuggestion>(
       itemName: { type: String, default: null },
       title: { type: String, default: null },
       description: { type: String, required: true },
+      price: { type: Number, default: null },
+      unit: { type: String, default: null },
+      priceUnit: { type: String, default: null },
+      unitOptions: { type: [String], default: null },
+      priceUnitOptions: { type: [String], default: null },
       quality: { type: Schema.Types.Mixed, default: null },
       attributes: { type: Schema.Types.Mixed, default: null },
     },

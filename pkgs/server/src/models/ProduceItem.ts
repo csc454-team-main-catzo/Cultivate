@@ -1,5 +1,18 @@
 import mongoose, { Schema, type Document, type Types } from "mongoose";
 
+export type ProduceUnit = "kg" | "lb" | "count" | "bunch";
+
+export interface IPriceHint {
+  unit: ProduceUnit;
+  currency: "CAD";
+  typicalMin: number;
+  typicalMax: number;
+  suggested: number;
+  source: string;
+  referencePeriod: string;
+  notes?: string;
+}
+
 function normalizeSynonym(value: string): string {
   return value.trim().toLowerCase();
 }
@@ -17,6 +30,9 @@ export interface IProduceItem extends Document {
   name: string;
   canonical: string;
   synonyms: string[];
+  defaultUnit: ProduceUnit | null;
+  commonUnits: ProduceUnit[];
+  priceHints: IPriceHint[];
   active: boolean;
   priority: number;
   createdBy: Types.ObjectId | null;
@@ -24,11 +40,31 @@ export interface IProduceItem extends Document {
   updatedAt: Date;
 }
 
+const PriceHintSchema = new Schema<IPriceHint>(
+  {
+    unit: { type: String, enum: ["kg", "lb", "count", "bunch"], required: true },
+    currency: { type: String, enum: ["CAD"], required: true, default: "CAD" },
+    typicalMin: { type: Number, required: true, min: 0 },
+    typicalMax: { type: Number, required: true, min: 0 },
+    suggested: { type: Number, required: true, min: 0 },
+    source: { type: String, required: true, trim: true },
+    referencePeriod: { type: String, required: true, trim: true },
+    notes: { type: String, required: false, trim: true },
+  },
+  { _id: false }
+);
+
 const ProduceItemSchema = new Schema<IProduceItem>(
   {
     name: { type: String, required: true, unique: true, trim: true, index: true },
     canonical: { type: String, required: true, trim: true, unique: true, index: true },
     synonyms: { type: [String], default: [] },
+    defaultUnit: { type: String, enum: ["kg", "lb", "count", "bunch"], default: null },
+    commonUnits: {
+      type: [{ type: String, enum: ["kg", "lb", "count", "bunch"] }],
+      default: [],
+    },
+    priceHints: { type: [PriceHintSchema], default: [] },
     active: { type: Boolean, default: true, index: true },
     priority: { type: Number, default: 0 },
     createdBy: { type: Schema.Types.ObjectId, ref: "User", default: null },

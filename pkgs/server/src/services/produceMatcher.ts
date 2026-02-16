@@ -17,6 +17,27 @@ export interface MatchReason {
 }
 
 interface MatchResult {
+  selected: {
+    itemId: string;
+    canonical: string;
+    score: number;
+    defaultUnit: string | null;
+    commonUnits: string[];
+    priceHints: Array<{
+      unit: string;
+      suggested: number;
+      currency: string;
+      referencePeriod: string;
+      source: string;
+    }>;
+  } | null;
+  bestScore: number;
+  topCandidates: Array<{
+    itemId: string;
+    canonical: string;
+    score: number;
+  }>;
+  threshold: number;
   itemId: string | null;
   itemName: string | null;
   confidence: number;
@@ -87,12 +108,22 @@ export async function matchProduceFromTags(
 ): Promise<MatchResult> {
   const activeItems = await loadActiveProduceItemsCached();
   if (activeItems.length === 0) {
-    return { itemId: null, itemName: null, confidence: 0, reasons: [] };
+    return {
+      selected: null,
+      bestScore: 0,
+      topCandidates: [],
+      threshold,
+      itemId: null,
+      itemName: null,
+      confidence: 0,
+      reasons: [],
+    };
   }
 
   const topTags = tags.slice(0, TOP_LABELS).filter((tag) => tag.name);
   let bestScore = 0;
   let bestItem: IProduceItem | null = null;
+  const itemScores = new Map<string, { itemId: string; canonical: string; score: number }>();
   const reasons: MatchReason[] = [];
 
   for (const tag of topTags) {
@@ -108,6 +139,15 @@ export async function matchProduceFromTags(
         if (weight === 0) continue;
 
         const score = tagScore * weight * (1 + item.priority * 0.05);
+        const itemId = item._id.toString();
+        const existingItemScore = itemScores.get(itemId);
+        if (!existingItemScore || score > existingItemScore.score) {
+          itemScores.set(itemId, {
+            itemId,
+            canonical: item.canonical,
+            score,
+          });
+        }
         if (score > bestScore) {
           bestScore = score;
           bestItem = item;
@@ -121,13 +161,56 @@ export async function matchProduceFromTags(
     });
   }
 
+  const topCandidates = Array.from(itemScores.values())
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 5);
+
   if (!bestItem || bestScore < threshold) {
-    return { itemId: null, itemName: null, confidence: bestScore, reasons };
+    return {
+      selected: null,
+      bestScore,
+      topCandidates,
+      threshold,
+      itemId: null,
+      itemName: null,
+      confidence: bestScore,
+      reasons,
+    };
   }
 
-  return {
+  const selected = {
     itemId: bestItem._id.toString(),
-    itemName: bestItem.canonical,
+    canonical: bestItem.canonical,
+    score: bestScore,
+    defaultUnit: (bestItem as unknown as { defaultUnit?: string | null }).defaultUnit || null,
+    commonUnits:
+      ((bestItem as unknown as { commonUnits?: string[] }).commonUnits || []).slice(0),
+    priceHints: (
+      (bestItem as unknown as {
+        priceHints?: Array<{
+          unit?: string;
+          suggested?: number;
+          currency?: string;
+          referencePeriod?: string;
+          source?: string;
+        }>;
+      }).priceHints || []
+    ).map((hint) => ({
+      unit: String(hint.unit || ""),
+      suggested: Number(hint.suggested || 0),
+      currency: String(hint.currency || "CAD"),
+      referencePeriod: String(hint.referencePeriod || ""),
+      source: String(hint.source || ""),
+    })),
+  };
+
+  return {
+    selected,
+    bestScore,
+    topCandidates,
+    threshold,
+    itemId: selected.itemId,
+    itemName: selected.canonical,
     confidence: bestScore,
     reasons,
   };

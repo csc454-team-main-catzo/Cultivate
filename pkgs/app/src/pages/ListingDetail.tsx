@@ -3,6 +3,7 @@ import { Link, useParams, useNavigate } from "react-router-dom";
 import { useApi } from "../providers/apiContext";
 import { useUser } from "../providers/userContext";
 import { useListingActions } from "../hooks/useListingActions";
+import CFG from "../config";
 
 interface ResponseItem {
   _id: string;
@@ -21,6 +22,7 @@ interface ListingDetailData {
   description: string;
   price: number;
   qty: number;
+  photos?: Array<{ imageId: string }>;
   status: string;
   matchedResponseId: string | null;
   createdBy: { _id: string; name: string; email: string; role?: "farmer" | "restaurant" };
@@ -196,6 +198,10 @@ export default function ListingDetail() {
   const isOpen = listing.status === "open";
   const isOwner = user?._id === listing.createdBy?._id;
   const canRespond = isOpen && !isOwner;
+  const primaryImageId = listing.photos?.[0]?.imageId;
+  const primaryImageUrl = primaryImageId
+    ? `${CFG.API_URL}/api/images/${primaryImageId}`
+    : null;
 
   return (
     <div className="max-w-2xl mx-auto px-4 sm:px-6 py-8">
@@ -207,6 +213,13 @@ export default function ListingDetail() {
       </Link>
 
       <article className="card p-5 sm:p-6 mb-6">
+        {primaryImageUrl && (
+          <img
+            src={primaryImageUrl}
+            alt={listing.item}
+            className="w-full h-64 object-cover rounded-lg border border-earth-200 mb-4"
+          />
+        )}
         <div className="flex flex-wrap items-center gap-2 mb-2">
           <span
             className={`inline-block text-xs font-semibold px-2.5 py-1 rounded-full ${

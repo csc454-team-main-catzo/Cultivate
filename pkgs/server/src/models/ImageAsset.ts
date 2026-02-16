@@ -6,6 +6,8 @@ export interface IImageAsset extends Document {
   filename: string;
   mimeType: string;
   size: number;
+  width: number | null;
+  height: number | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -26,6 +28,8 @@ const ImageAssetSchema = new Schema<IImageAsset>(
     filename: { type: String, required: true, trim: true },
     mimeType: { type: String, required: true, trim: true },
     size: { type: Number, required: true, min: 1 },
+    width: { type: Number, default: null },
+    height: { type: Number, default: null },
   },
   { timestamps: true }
 );

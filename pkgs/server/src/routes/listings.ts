@@ -9,6 +9,7 @@ import CFG from "../config.js";
 import { downloadBufferFromGridFS } from "../services/gridfs.js";
 import { matchProduceFromTags, toTitleCase } from "../services/produceMatcher.js";
 import { getTags, type AzureVisionTag } from "../services/visionAzure.js";
+import { logJson } from "../utils/log.js";
 import {
   DraftFromImageResponseSchema,
   DraftFromImageSchema,
@@ -31,9 +32,9 @@ const listings = new Hono<AuthenticatedContext>();
 const itemMatchThreshold = Number(CFG.ITEM_MATCH_THRESHOLD || 0.6);
 const NEVER_AUTO_FILL = [
   "qty",
-  "unit",
-  "price",
-  "priceUnit",
+  // unit is now suggested from taxonomy metadata
+  // price is now suggested from taxonomy metadata
+  // priceUnit is now suggested from taxonomy metadata
   "availability",
   "fulfillment",
   "location",
@@ -230,6 +231,18 @@ listings.post(
 
       const match = await matchProduceFromTags(tags, itemMatchThreshold);
       const itemName = match.itemName;
+      const suggestedUnit = match.selected?.defaultUnit || null;
+      const suggestedPriceHint = match.selected?.priceHints?.[0];
+      const suggestedPrice =
+        suggestedPriceHint && Number.isFinite(suggestedPriceHint.suggested)
+          ? suggestedPriceHint.suggested
+          : null;
+      const unitOptions =
+        match.selected?.commonUnits?.length
+          ? match.selected.commonUnits
+          : suggestedUnit
+            ? [suggestedUnit]
+            : [];
       const title = itemName ? `Fresh ${toTitleCase(itemName)}` : "Fresh local produce";
       const description = itemName
         ? `Fresh ${toTitleCase(itemName)}, locally grown. Message for pickup window + partial fulfillment.`
@@ -239,6 +252,11 @@ listings.post(
         itemName: match.itemName,
         title,
         description,
+        price: suggestedPrice,
+        unit: suggestedUnit,
+        priceUnit: suggestedUnit,
+        unitOptions,
+        priceUnitOptions: unitOptions,
         quality: null as null,
       };
 
@@ -253,6 +271,26 @@ listings.post(
         provider: "azure",
       });
 
+      logJson("vision_draft_request", {
+        userId,
+        imageId,
+        draftSuggestionId: draftSuggestion._id.toString(),
+        sharp: {
+          outMimeType: imageAsset.mimeType,
+          width: imageAsset.width ?? null,
+          height: imageAsset.height ?? null,
+          sizeBytes: imageAsset.size,
+        },
+        azure: {
+          tagsTop20: tags.slice(0, 20),
+        },
+        match: {
+          threshold: match.threshold,
+          topCandidates: match.topCandidates.slice(0, 5),
+          selected: match.selected,
+        },
+      });
+
       return c.json(
         {
           draftSuggestionId: draftSuggestion._id.toString(),
@@ -262,7 +300,16 @@ listings.post(
           reasons,
           safeFieldPolicy: {
             neverAutoFill: NEVER_AUTO_FILL,
-            populated: ["itemId", "itemName", "title", "description", "quality"],
+            populated: [
+              "itemId",
+              "itemName",
+              "title",
+              "description",
+              "price",
+              "unit",
+              "priceUnit",
+              "quality",
+            ],
           },
         },
         200
