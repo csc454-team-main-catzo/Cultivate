@@ -18,7 +18,7 @@ const PopulatedUserSchema = v.object({
   _id: v.string(),
   name: v.string(),
   email: v.string(),
-  role: v.optional(v.picklist(["farmer", "restaurant"])),
+  role: v.optional(v.picklist(["farmer", "restaurant", "admin"])),
 });
 
 const ResponseSubdocSchema = v.object({
@@ -52,6 +52,13 @@ export const ListingCreateSchema = v.object({
   ),
   price: v.pipe(v.number(), v.minValue(0, "Price cannot be negative")),
   qty: v.pipe(v.number(), v.minValue(1, "Quantity must be at least 1")),
+  photos: v.optional(
+    v.array(
+      v.object({
+        imageId: v.pipe(v.string(), v.minLength(1, "Photo imageId is required")),
+      })
+    )
+  ),
   latLng: v.pipe(
     v.array(v.number()),
     v.length(2, "latLng must be exactly [latitude, longitude]"),
@@ -142,6 +149,11 @@ export const ListingResponseSchema = v.object({
   description: v.string(),
   price: v.number(),
   qty: v.number(),
+    photos: v.array(
+      v.object({
+        imageId: v.string(),
+      })
+    ),
   latLng: v.tuple([v.number(), v.number()]),
   createdBy: PopulatedUserSchema,
   matchedResponseId: v.nullable(v.string()),

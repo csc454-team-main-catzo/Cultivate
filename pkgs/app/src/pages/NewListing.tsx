@@ -1,39 +1,218 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useApi } from "../providers/apiContext";
 import { useUser } from "../providers/userContext";
 import { geocodeZipCode } from "../utils/geocode";
+import {
+  ApiStatusError,
+  type DraftFromImageResponse,
+  type DraftSuggestedFields,
+  useListingActions,
+} from "../hooks/useListingActions";
 
-interface FormState {
+interface ListingFormValues {
+  itemId: string;
+  itemName: string;
   title: string;
-  item: string;
   description: string;
-  price: string;
   qty: string;
+  unit: string;
+  price: string;
+  priceUnit: string;
+  availability: {
+    startAt: string;
+    endAt: string;
+  };
+  fulfillment: string;
   zipCode: string;
+  photos: Array<{ imageId: string }>;
+  attributes?: Record<string, unknown> | null;
 }
 
-const INITIAL_FORM: FormState = {
+const INITIAL_FORM: ListingFormValues = {
+  itemId: "",
+  itemName: "",
   title: "",
-  item: "",
   description: "",
-  price: "",
   qty: "",
+  unit: "",
+  price: "",
+  priceUnit: "",
+  availability: {
+    startAt: "",
+    endAt: "",
+  },
+  fulfillment: "",
   zipCode: "",
+  photos: [],
+  attributes: undefined,
 };
+
+const DEFAULT_UNIT_OPTIONS = ["kg", "lb", "count", "bunch"];
+
+function toTitleCase(value: string): string {
+  return value.replace(/\w\S*/g, (word) => {
+    const first = word.charAt(0).toLocaleUpperCase();
+    return `${first}${word.slice(1)}`;
+  });
+}
 
 export default function NewListing() {
   const navigate = useNavigate();
-  const { listings: listingsApi } = useApi();
   const { user } = useUser();
-  const [form, setForm] = useState<FormState>(INITIAL_FORM);
+  const { uploadImage, getDraft, createListing } = useListingActions();
+  const [form, setForm] = useState<ListingFormValues>(INITIAL_FORM);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
+  const [selectedImage, setSelectedImage] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const [generatingDraft, setGeneratingDraft] = useState(false);
+  const [draft, setDraft] = useState<DraftFromImageResponse | null>(null);
+  const imageId = form.photos[0]?.imageId ?? "";
 
-  function updateField(field: keyof FormState, value: string) {
+  const canGenerateDraft = Boolean(imageId) && !generatingDraft;
+
+  useEffect(() => {
+    return () => {
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+    };
+  }, [previewUrl]);
+
+  function updateField(field: keyof ListingFormValues, value: string) {
     setForm((prev) => ({ ...prev, [field]: value }));
     setError(null);
   }
+
+  function preventWheelStepChange(
+    e: React.WheelEvent<HTMLInputElement>
+  ) {
+    e.currentTarget.blur();
+  }
+
+  function validateForm(values: ListingFormValues): string | null {
+    if (!values.itemName.trim()) return "Item name is required";
+    if (!values.title.trim()) return "Title is required";
+    if (!values.description.trim()) return "Description is required";
+    if (!values.qty.trim()) return "Quantity is required";
+    if (!values.unit.trim()) return "Unit is required";
+    if (!values.price.trim()) return "Price is required";
+    if (!values.priceUnit.trim()) return "Price unit is required";
+    if (!values.zipCode.trim()) return "Postal code is required";
+    if (!values.photos[0]?.imageId) return "Photo upload is required";
+
+    const qtyNum = Number(values.qty);
+    if (!Number.isFinite(qtyNum) || qtyNum <= 0) {
+      return "Quantity must be greater than 0";
+    }
+
+    const priceNum = Number(values.price);
+    if (!Number.isFinite(priceNum) || priceNum < 0) {
+      return "Price must be 0 or greater";
+    }
+
+    return null;
+  }
+
+  async function handleImageSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setToast(null);
+    setError(null);
+    setSelectedImage(file);
+    setDraft(null);
+
+    const nextPreview = URL.createObjectURL(file);
+    setPreviewUrl((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return nextPreview;
+    });
+
+    setUploadingImage(true);
+    try {
+      const upload = await uploadImage(file);
+      setForm((prev) => ({
+        ...prev,
+        photos: [{ imageId: upload.imageId }],
+      }));
+    } catch (err: unknown) {
+      setForm((prev) => ({ ...prev, photos: [] }));
+      if (err instanceof ApiStatusError) {
+        if (err.status === 413) {
+          setToast("Image too large. Please upload a smaller image.");
+          return;
+        }
+        if (err.status === 415) {
+          setToast("Unsupported format. Use JPEG, PNG, or WEBP.");
+          return;
+        }
+        if (err.status === 429) {
+          setToast("Too many upload requests. Please try again shortly.");
+          return;
+        }
+      }
+      setError(err instanceof Error ? err.message : "Failed to upload image");
+    } finally {
+      setUploadingImage(false);
+    }
+  }
+
+  async function handleGenerateDraft() {
+    if (!imageId) return;
+    setGeneratingDraft(true);
+    setError(null);
+    setToast(null);
+    try {
+      const result = await getDraft(imageId);
+      setDraft(result);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to generate draft");
+    } finally {
+      setGeneratingDraft(false);
+    }
+  }
+
+  function applyDraftSafeOnly(suggestedFields: DraftSuggestedFields) {
+    const suggestedItemName = suggestedFields.itemName?.trim() || "";
+    const suggestedUnit = suggestedFields.unit?.trim() || "";
+    const suggestedPriceUnit = suggestedFields.priceUnit?.trim() || suggestedUnit;
+    setForm((prev) => ({
+      ...prev,
+      itemId: suggestedFields.itemId || prev.itemId,
+      itemName: suggestedItemName || prev.itemName,
+      title:
+        suggestedFields.title ??
+        (suggestedItemName
+          ? `Fresh ${toTitleCase(suggestedItemName)}`
+          : "Fresh local produce"),
+      description: suggestedFields.description || prev.description,
+      price:
+        typeof suggestedFields.price === "number" &&
+        Number.isFinite(suggestedFields.price)
+          ? suggestedFields.price.toFixed(2)
+          : prev.price,
+      unit: suggestedUnit || prev.unit,
+      priceUnit: suggestedPriceUnit || prev.priceUnit,
+      attributes:
+        suggestedFields.attributes !== undefined
+          ? suggestedFields.attributes
+          : prev.attributes,
+    }));
+    setDraft(null);
+  }
+
+  const requiredMissing = useMemo(() => Boolean(validateForm(form)), [form]);
+  const unitOptions = useMemo(() => {
+    const fromDraft = draft?.suggestedFields.unitOptions || [];
+    const all = [...fromDraft, ...DEFAULT_UNIT_OPTIONS];
+    return Array.from(new Set(all.filter(Boolean)));
+  }, [draft?.suggestedFields.unitOptions]);
+  const priceUnitOptions = useMemo(() => {
+    const fromDraft = draft?.suggestedFields.priceUnitOptions || [];
+    const all = [...fromDraft, ...DEFAULT_UNIT_OPTIONS];
+    return Array.from(new Set(all.filter(Boolean)));
+  }, [draft?.suggestedFields.priceUnitOptions]);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -41,33 +220,26 @@ export default function NewListing() {
     setSubmitting(true);
 
     try {
-      if (!form.title.trim()) throw new Error("Title is required");
-      if (!form.item.trim()) throw new Error("Item is required");
-      if (!form.description.trim()) throw new Error("Description is required");
+      const validationMessage = validateForm(form);
+      if (validationMessage) throw new Error(validationMessage);
 
-      const price = parseFloat(form.price);
-      const qty = parseInt(form.qty, 10);
-      if (isNaN(qty) || qty < 1) {
-        throw new Error("Quantity must be at least 1");
-      }
-      if (isNaN(price) || price < 0) {
-        throw new Error("Price per unit must be 0 or greater");
-      }
-
+      const price = Number(form.price);
+      const qty = Number(form.qty);
       const latLng = await geocodeZipCode(form.zipCode);
 
       const type = user?.role === "farmer" ? "supply" : "demand";
 
-      await listingsApi.createListing({
-        createListingRequest: {
-          type,
-          title: form.title.trim(),
-          item: form.item.trim(),
-          description: form.description.trim(),
-          price,
-          qty,
-          latLng,
-        },
+      // Current backend create payload still expects item + latLng.
+      // We map from the richer form model without auto-filling unsafe fields.
+      await createListing({
+        type,
+        title: form.title.trim(),
+        item: form.itemName.trim(),
+        description: form.description.trim(),
+        price,
+        qty,
+        latLng,
+        photos: form.photos,
       });
 
       navigate("/listings");
@@ -85,7 +257,7 @@ export default function NewListing() {
   return (
     <div className="max-w-xl mx-auto px-4 sm:px-6 py-8 sm:py-10">
       <h1 className="font-display text-2xl sm:text-3xl text-earth-900 mb-6">
-        Create listing
+        Create supply listing
       </h1>
 
       {error && (
@@ -93,8 +265,120 @@ export default function NewListing() {
           {error}
         </div>
       )}
+      {toast && (
+        <div className="mb-4 p-3 bg-harvest-50 border border-harvest-200 text-harvest-800 rounded-lg text-sm">
+          {toast}
+        </div>
+      )}
 
       <form onSubmit={handleSubmit} className="space-y-4">
+        <div>
+          <label className="block text-sm font-medium text-earth-700 mb-1">
+            Upload produce photo <span className="text-red-500">*</span>
+          </label>
+          <input
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            onChange={handleImageSelect}
+            className="input-field"
+          />
+          {selectedImage && (
+            <p className="text-earth-500 text-xs mt-1">
+              {uploadingImage ? "Uploading..." : `Selected: ${selectedImage.name}`}
+            </p>
+          )}
+          {previewUrl && (
+            <img
+              src={previewUrl}
+              alt="Selected produce preview"
+              className="mt-3 w-full h-48 object-cover rounded-lg border border-earth-200"
+            />
+          )}
+        </div>
+
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            disabled={!canGenerateDraft}
+            onClick={handleGenerateDraft}
+            className="btn-secondary disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            {generatingDraft ? "Generating..." : "Generate draft"}
+          </button>
+          <span className="text-xs text-earth-500">
+            AI only suggests item/title/description/attributes.
+          </span>
+        </div>
+
+        {draft && (
+          <div className="card p-4 space-y-3">
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="text-lg font-semibold text-earth-900">AI draft suggestion</h2>
+              <span className="text-sm text-earth-600">
+                Confidence: {Math.round((draft.confidence || 0) * 100)}%
+              </span>
+            </div>
+
+            <div className="text-sm text-earth-700 space-y-1">
+              <p>
+                <span className="font-medium">Item:</span>{" "}
+                {draft.suggestedFields.itemName || "None"}
+              </p>
+              <p>
+                <span className="font-medium">Title:</span>{" "}
+                {draft.suggestedFields.title || "None"}
+              </p>
+              <p>
+                <span className="font-medium">Description:</span>{" "}
+                {draft.suggestedFields.description}
+              </p>
+              {typeof draft.suggestedFields.price === "number" && (
+                <p>
+                  <span className="font-medium">Suggested price:</span>{" "}
+                  ${draft.suggestedFields.price.toFixed(2)}
+                  {draft.suggestedFields.priceUnit
+                    ? ` per ${draft.suggestedFields.priceUnit}`
+                    : ""}
+                </p>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                className="btn-primary"
+                onClick={() => applyDraftSafeOnly(draft.suggestedFields)}
+              >
+                Apply
+              </button>
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => setDraft(null)}
+              >
+                Dismiss
+              </button>
+            </div>
+            {/* <p className="text-xs text-earth-500">
+              Not automatically filled: {NEVER_AUTO_FILL.join(", ")}
+            </p> */}
+          </div>
+        )}
+
+        <div>
+          <label className="block text-sm font-medium text-earth-700 mb-1">
+            Item name <span className="text-red-500">*</span>
+          </label>
+          <input
+            type="text"
+            value={form.itemName}
+            onChange={(e) => updateField("itemName", e.target.value)}
+            placeholder="e.g. Tomatoes"
+            className="input-field"
+            maxLength={100}
+          />
+        </div>
+
         <div>
           <label className="block text-sm font-medium text-earth-700 mb-1">
             Title <span className="text-red-500">*</span>
@@ -103,23 +387,9 @@ export default function NewListing() {
             type="text"
             value={form.title}
             onChange={(e) => updateField("title", e.target.value)}
-            placeholder="e.g. Looking for organic tomatoes"
+            placeholder="e.g. Fresh Tomatoes"
             className="input-field"
             maxLength={150}
-          />
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-earth-700 mb-1">
-            Item <span className="text-red-500">*</span>
-          </label>
-          <input
-            type="text"
-            value={form.item}
-            onChange={(e) => updateField("item", e.target.value)}
-            placeholder="e.g. Tomatoes"
-            className="input-field"
-            maxLength={100}
           />
         </div>
 
@@ -139,37 +409,109 @@ export default function NewListing() {
 
         <div>
           <label className="block text-sm font-medium text-earth-700 mb-1">
-            Price per unit ($) <span className="text-red-500">*</span>
-          </label>
-          <input
-            type="number"
-            value={form.price}
-            onChange={(e) => updateField("price", e.target.value)}
-            placeholder="0.00"
-            min="0"
-            step="0.01"
-            className="input-field"
-          />
-          <p className="text-earth-500 text-xs mt-1">
-            Price per unit (per lb). Use 0 if not applicable.
-          </p>
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-earth-700 mb-1">
             Quantity <span className="text-red-500">*</span>
           </label>
           <input
             type="number"
             value={form.qty}
             onChange={(e) => updateField("qty", e.target.value)}
+            onWheel={preventWheelStepChange}
             placeholder="e.g. 50"
             min="1"
             step="1"
             className="input-field"
           />
-          <p className="text-earth-500 text-xs mt-1">Number of units (lbs).</p>
         </div>
+
+        <div>
+          <label className="block text-sm font-medium text-earth-700 mb-1">
+            Unit <span className="text-red-500">*</span>
+          </label>
+          <select
+            value={form.unit}
+            onChange={(e) => updateField("unit", e.target.value)}
+            className="input-field"
+          >
+            <option value="">Select a unit</option>
+            {unitOptions.map((unit) => (
+              <option key={unit} value={unit}>
+                {unit}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-earth-700 mb-1">
+            Price <span className="text-red-500">*</span>
+          </label>
+          <input
+            type="number"
+            value={form.price}
+            onChange={(e) => updateField("price", e.target.value)}
+            onWheel={preventWheelStepChange}
+            placeholder="0.00"
+            min="0"
+            step="0.01"
+            className="input-field"
+          />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-earth-700 mb-1">
+            Price unit <span className="text-red-500">*</span>
+          </label>
+          <select
+            value={form.priceUnit}
+            onChange={(e) => updateField("priceUnit", e.target.value)}
+            className="input-field"
+          >
+            <option value="">Select a price unit</option>
+            {priceUnitOptions.map((unit) => (
+              <option key={unit} value={unit}>
+                {unit}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-earth-700 mb-1">
+              Available from <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="datetime-local"
+              value={form.availability.startAt}
+              onChange={(e) => updateAvailability("startAt", e.target.value)}
+              className="input-field"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-earth-700 mb-1">
+              Available until <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="datetime-local"
+              value={form.availability.endAt}
+              onChange={(e) => updateAvailability("endAt", e.target.value)}
+              className="input-field"
+            />
+          </div>
+        </div> */}
+
+        {/* <div>
+          <label className="block text-sm font-medium text-earth-700 mb-1">
+            Fulfillment <span className="text-red-500">*</span>
+          </label>
+          <input
+            type="text"
+            value={form.fulfillment}
+            onChange={(e) => updateField("fulfillment", e.target.value)}
+            placeholder="e.g. pickup only"
+            className="input-field"
+          />
+        </div> */}
 
         <div>
           <label className="block text-sm font-medium text-earth-700 mb-1">
@@ -184,13 +526,13 @@ export default function NewListing() {
             maxLength={10}
           />
           <p className="text-earth-500 text-xs mt-1">
-            Your location (Canadian postal code). Used to help others find listings near them.
+            Enter a Canadian postal code. We geocode this to listing coordinates.
           </p>
         </div>
 
         <button
           type="submit"
-          disabled={submitting}
+          disabled={submitting || requiredMissing}
           className="w-full py-3 px-4 rounded-lg font-medium bg-leaf-600 text-white hover:bg-leaf-700 disabled:bg-earth-300 disabled:text-earth-500 transition-colors"
         >
           {submitting ? "Creating..." : "Create listing"}

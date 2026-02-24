@@ -2,7 +2,19 @@ import { Hono } from "hono";
 import { describeRoute, resolver, validator } from "hono-openapi";
 import { authMiddleware } from "../middleware/auth.js";
 import type { AuthenticatedContext } from "../middleware/types.js";
+import DraftSuggestion from "../models/DraftSuggestion.js";
+import ImageAsset from "../models/ImageAsset.js";
 import Listing, { type IResponse } from "../models/Listing.js";
+import CFG from "../config.js";
+import { downloadBufferFromGridFS } from "../services/gridfs.js";
+import { matchProduceFromTags, toTitleCase } from "../services/produceMatcher.js";
+import { getTags, type AzureVisionTag } from "../services/visionAzure.js";
+import { logJson } from "../utils/log.js";
+import {
+  DraftFromImageResponseSchema,
+  DraftFromImageSchema,
+  type DraftFromImageInput,
+} from "../schemas/draft-suggestion.js";
 import {
   ListingCreateSchema,
   type ListingCreateInput,
@@ -17,6 +29,16 @@ import {
 } from "../schemas/listing.js";
 
 const listings = new Hono<AuthenticatedContext>();
+const itemMatchThreshold = Number(CFG.ITEM_MATCH_THRESHOLD || 0.6);
+const NEVER_AUTO_FILL = [
+  "qty",
+  // unit is now suggested from taxonomy metadata
+  // price is now suggested from taxonomy metadata
+  // priceUnit is now suggested from taxonomy metadata
+  "availability",
+  "fulfillment",
+  "location",
+];
 listings.use(describeRoute({
   tags: ['Listings']
 }))
@@ -149,6 +171,150 @@ listings.post(
       if (err instanceof Error && err.name === "ValidationError") {
         return c.json({ error: err.message }, 400);
       }
+      const message = err instanceof Error ? err.message : "Unknown error";
+      return c.json({ error: message }, 500);
+    }
+  }
+);
+
+listings.post(
+  "/draft-from-image",
+  describeRoute({
+    operationId: "createDraftFromImage",
+    summary: "Generate listing draft suggestion from an uploaded image",
+    security: [{ bearerAuth: [] }],
+    responses: {
+      200: {
+        description: "Created draft suggestion from image",
+        content: {
+          "application/json": {
+            schema: resolver(DraftFromImageResponseSchema),
+          },
+        },
+      },
+      401: { description: "Unauthorized" },
+      403: { description: "Forbidden" },
+      404: { description: "Image not found" },
+    },
+  }),
+  authMiddleware(),
+  validator("json", DraftFromImageSchema),
+  async (c) => {
+    try {
+      const { imageId } = c.req.valid("json" as never) as DraftFromImageInput;
+      const userId = c.get("userId");
+
+      const imageAsset = await ImageAsset.findById(imageId);
+      if (!imageAsset) {
+        return c.json({ error: "Image asset not found" }, 404);
+      }
+
+      if (imageAsset.owner.toString() !== userId) {
+        return c.json({ error: "You do not own this image asset" }, 403);
+      }
+
+      const imageBuffer = await downloadBufferFromGridFS(
+        imageAsset.gridFsFileId.toString()
+      );
+
+      let tags: AzureVisionTag[] = [];
+      try {
+        tags = await getTags(imageBuffer);
+      } catch {
+        return c.json({ error: "vision_failed" }, 500);
+      }
+
+      const reasons = tags.slice(0, 5).map((tag) => ({
+        desc: tag.name,
+        score: tag.confidence,
+      }));
+
+      const match = await matchProduceFromTags(tags, itemMatchThreshold);
+      const itemName = match.itemName;
+      const suggestedUnit = match.selected?.defaultUnit || null;
+      const suggestedPriceHint = match.selected?.priceHints?.[0];
+      const suggestedPrice =
+        suggestedPriceHint && Number.isFinite(suggestedPriceHint.suggested)
+          ? suggestedPriceHint.suggested
+          : null;
+      const unitOptions =
+        match.selected?.commonUnits?.length
+          ? match.selected.commonUnits
+          : suggestedUnit
+            ? [suggestedUnit]
+            : [];
+      const title = itemName ? `Fresh ${toTitleCase(itemName)}` : "Fresh local produce";
+      const description = itemName
+        ? `Fresh ${toTitleCase(itemName)}, locally grown. Message for pickup window + partial fulfillment.`
+        : "Fresh local produce. Message for pickup window + partial fulfillment.";
+      const suggestedFields = {
+        itemId: match.itemId,
+        itemName: match.itemName,
+        title,
+        description,
+        price: suggestedPrice,
+        unit: suggestedUnit,
+        priceUnit: suggestedUnit,
+        unitOptions,
+        priceUnitOptions: unitOptions,
+        quality: null as null,
+      };
+
+      const draftSuggestion = await DraftSuggestion.create({
+        imageId,
+        ownerId: userId,
+        suggestedFields,
+        confidences: {
+          item: match.confidence,
+          labels: reasons,
+        },
+        provider: "azure",
+      });
+
+      logJson("vision_draft_request", {
+        userId,
+        imageId,
+        draftSuggestionId: draftSuggestion._id.toString(),
+        sharp: {
+          outMimeType: imageAsset.mimeType,
+          width: imageAsset.width ?? null,
+          height: imageAsset.height ?? null,
+          sizeBytes: imageAsset.size,
+        },
+        azure: {
+          tagsTop20: tags.slice(0, 20),
+        },
+        match: {
+          threshold: match.threshold,
+          topCandidates: match.topCandidates.slice(0, 5),
+          selected: match.selected,
+        },
+      });
+
+      return c.json(
+        {
+          draftSuggestionId: draftSuggestion._id.toString(),
+          imageId,
+          suggestedFields,
+          confidence: match.confidence,
+          reasons,
+          safeFieldPolicy: {
+            neverAutoFill: NEVER_AUTO_FILL,
+            populated: [
+              "itemId",
+              "itemName",
+              "title",
+              "description",
+              "price",
+              "unit",
+              "priceUnit",
+              "quality",
+            ],
+          },
+        },
+        200
+      );
+    } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Unknown error";
       return c.json({ error: message }, 500);
     }

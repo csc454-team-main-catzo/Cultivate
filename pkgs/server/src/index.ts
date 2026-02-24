@@ -6,7 +6,9 @@ import * as v from 'valibot'
 import { openAPIRouteHandler } from 'hono-openapi'
 import { connectDB } from './db.js'
 import { authMiddleware } from './middleware/auth.js'
+import imageRoutes from './routes/images.js'
 import listingRoutes from './routes/listings.js'
+import produceItemRoutes from './routes/produce-items.js'
 import userRoutes from './routes/users.js'
 
 type AppBindings = {
@@ -61,6 +63,9 @@ app.get(
 // Mount resource routers
 app.route('/listings', listingRoutes)
 app.route('/users', userRoutes)
+app.route('/api/listings', listingRoutes)
+app.route('/api', imageRoutes)
+app.route('/api', produceItemRoutes)
 
 app.get(
   '/openapi.json',
