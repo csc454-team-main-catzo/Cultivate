@@ -74,5 +74,26 @@ export function useListingActions() {
     [getAuthHeaders]
   );
 
-  return { updateListing, deleteListing, matchListingResponse };
+  const deleteListingResponse = useCallback(
+    async (listingId: string, responseId: string) => {
+      const headers = await getAuthHeaders();
+      const res = await fetch(
+        `${CFG.API_URL}/listings/${listingId}/responses/${responseId}`,
+        {
+          method: "DELETE",
+          headers,
+        }
+      );
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(
+          (data as { error?: string }).error || "Failed to delete response"
+        );
+      }
+      return res.json();
+    },
+    [getAuthHeaders]
+  );
+
+  return { updateListing, deleteListing, matchListingResponse, deleteListingResponse };
 }
