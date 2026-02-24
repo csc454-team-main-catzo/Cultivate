@@ -18,9 +18,13 @@ type AppBindings = {
 }
 
 const app = new Hono<AppBindings>()
-app.use(cors({
-  origin: '*',
-}))
+app.use(
+  cors({
+    origin: 'https://cultivate-fe.vercel.app',
+    allowMethods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowHeaders: ['Authorization', 'Content-Type'],
+  }),
+)
 
 const HealthCheckResponse = v.object({
   healthy: v.boolean(),
