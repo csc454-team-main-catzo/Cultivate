@@ -225,6 +225,85 @@ listings.post(
 );
 
 /* ------------------------------------------------------------------ */
+/*  DELETE /listings/:id/responses/:responseId — delete own response  */
+/* ------------------------------------------------------------------ */
+listings.delete(
+  "/:id/responses/:responseId",
+  describeRoute({
+    operationId: "deleteListingResponse",
+    summary: "Delete a response from a listing (response owner only)",
+    security: [{ bearerAuth: [] }],
+    responses: {
+      200: {
+        description: "Response deleted, returns updated listing",
+        content: {
+          "application/json": {
+            schema: resolver(ListingResponseSchema),
+          },
+        },
+      },
+      401: { description: "Unauthorized" },
+      403: { description: "Forbidden — not the response owner" },
+      404: { description: "Listing or response not found" },
+    },
+  }),
+  authMiddleware(),
+  async (c) => {
+    try {
+      const listingId = c.req.param("id");
+      const responseId = c.req.param("responseId");
+      const userId = c.get("userId");
+
+      const listing = await Listing.findById(listingId);
+
+      if (!listing) {
+        return c.json({ error: "Listing not found" }, 404);
+      }
+
+      const response = listing.responses.id(responseId) as IResponse | null;
+
+      if (!response) {
+        return c.json({ error: "Response not found" }, 404);
+      }
+
+      if (response.createdBy.toString() !== userId) {
+        return c.json(
+          { error: "You can only delete your own response" },
+          403
+        );
+      }
+
+      // If the deleted response was matched, reset the match
+      if (
+        listing.matchedResponseId &&
+        listing.matchedResponseId.toString() === responseId
+      ) {
+        listing.matchedResponseId = null as any;
+        if (listing.status === "matched") {
+          listing.status = "open";
+        }
+      }
+
+      // Remove the response subdocument
+      listing.responses = listing.responses.filter(
+        (r: IResponse) => r._id.toString() !== responseId
+      ) as any;
+      await listing.save();
+
+      const populated = await Listing.findById(listing._id)
+        .populate("createdBy", "name email role")
+        .populate("responses.createdBy", "name email role")
+        .lean();
+
+      return c.json(populated, 200);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Unknown error";
+      return c.json({ error: message }, 500);
+    }
+  }
+);
+
+/* ------------------------------------------------------------------ */
 /*  POST /listings/:id/match — auth required, owner matches a response */
 /* ------------------------------------------------------------------ */
 listings.post(
