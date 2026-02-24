@@ -35,7 +35,12 @@ export default function ListingDetail() {
   const navigate = useNavigate();
   const { listings: listingsApi } = useApi();
   const { user } = useUser();
-  const { deleteListing, updateListing, matchListingResponse } = useListingActions();
+  const {
+    deleteListing,
+    updateListing,
+    matchListingResponse,
+    deleteListingResponse,
+  } = useListingActions();
   const [listing, setListing] = useState<ListingDetailData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -51,6 +56,11 @@ export default function ListingDetail() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  // Delete response
+  const [responseToDelete, setResponseToDelete] = useState<ResponseItem | null>(null);
+  const [deletingResponse, setDeletingResponse] = useState(false);
+  const [deleteResponseError, setDeleteResponseError] = useState<string | null>(null);
 
   // Match / Fulfilled
   const [matchingResponseId, setMatchingResponseId] = useState<string | null>(null);
@@ -140,6 +150,25 @@ export default function ListingDetail() {
     } finally {
       setDeleting(false);
       setShowDeleteConfirm(false);
+    }
+  }
+
+  async function handleDeleteResponse() {
+    const listingId = id;
+    if (!listingId || !responseToDelete) return;
+    setDeleteResponseError(null);
+    setDeletingResponse(true);
+    try {
+      const updated = await deleteListingResponse(listingId, responseToDelete._id);
+      const data = (updated as { data?: ListingDetailData }).data ?? updated;
+      setListing(data as ListingDetailData);
+      setResponseToDelete(null);
+    } catch (err) {
+      setDeleteResponseError(
+        err instanceof Error ? err.message : "Failed to delete response."
+      );
+    } finally {
+      setDeletingResponse(false);
     }
   }
 
@@ -251,7 +280,7 @@ export default function ListingDetail() {
           by {listing.createdBy?.name || "Unknown"}
         </p>
         {isOwner && (
-          <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t border-earth-200">
+          <div className="flex flex-wrap items-center gap-3 mt-4 pt-4 border-t border-earth-200">
             <Link
               to={`/listings/${listing._id}/edit`}
               className="btn-secondary text-sm"
@@ -261,9 +290,24 @@ export default function ListingDetail() {
             <button
               type="button"
               onClick={() => setShowDeleteConfirm(true)}
-              className="px-3 py-1.5 text-sm font-medium rounded-lg border border-red-200 text-red-700 hover:bg-red-50 transition-colors"
+              className="inline-flex items-center justify-center w-9 h-9 rounded-full border border-red-200 text-red-700 hover:bg-red-50 transition-colors"
+              aria-label="Delete listing"
             >
-              Delete listing
+              <svg
+                aria-hidden="true"
+                className="w-4 h-4"
+                viewBox="0 0 20 20"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <path
+                  d="M7.5 8.75V14.25M12.5 8.75V14.25M4.375 5.75H15.625M5.625 5.75L6.25 15.5C6.25 16.1904 6.80964 16.75 7.5 16.75H12.5C13.1904 16.75 13.75 16.1904 13.75 15.5L14.375 5.75M8.75 3.25H11.25C11.9404 3.25 12.5 3.80964 12.5 4.5V5.75H7.5V4.5C7.5 3.80964 8.05964 3.25 8.75 3.25Z"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
             </button>
           </div>
         )}
@@ -309,6 +353,48 @@ export default function ListingDetail() {
         </div>
       )}
 
+      {responseToDelete && (
+        <div
+          className="fixed inset-0 z-10 flex items-center justify-center p-4 bg-earth-900/50"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="delete-response-title"
+        >
+          <div className="card p-6 max-w-sm w-full">
+            <h2
+              id="delete-response-title"
+              className="font-display text-lg text-earth-900 mb-2"
+            >
+              Delete your response?
+            </h2>
+            <p className="text-earth-600 text-sm mb-4">
+              This cannot be undone. The response will be removed from this listing.
+            </p>
+            {deleteResponseError && (
+              <p className="text-red-600 text-sm mb-4">{deleteResponseError}</p>
+            )}
+            <div className="flex gap-2 justify-end">
+              <button
+                type="button"
+                onClick={() => setResponseToDelete(null)}
+                className="btn-secondary"
+                disabled={deletingResponse}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteResponse}
+                disabled={deletingResponse}
+                className="px-4 py-2 rounded-lg font-medium bg-red-600 text-white hover:bg-red-700 disabled:opacity-50"
+              >
+                {deletingResponse ? "Deleting..." : "Delete"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Responses */}
       <section className="mb-6">
         <h2 className="font-display text-lg text-earth-900 mb-3">
@@ -319,16 +405,24 @@ export default function ListingDetail() {
         ) : (
           <ul className="space-y-3">
             {listing.responses.map((r) => {
-              const isMatched = listing.matchedResponseId != null && r._id === listing.matchedResponseId;
-              const canMatch = isOwner && listing.status === "open" && !isMatched;
+              const isMatched =
+                listing.matchedResponseId != null &&
+                r._id === listing.matchedResponseId;
+              const canMatch =
+                isOwner && listing.status === "open" && !isMatched;
+              const isResponseOwner = user?._id === r.createdBy?._id;
               return (
                 <li
                   key={r._id}
-                  className={`card p-4 border-earth-100 ${isMatched ? "ring-2 ring-leaf-500 bg-leaf-50/50" : ""}`}
+                  className={`card p-4 border-earth-100 ${
+                    isMatched ? "ring-2 ring-leaf-500 bg-leaf-50/50" : ""
+                  }`}
                 >
                   <div className="flex flex-wrap items-start justify-between gap-2">
                     <div className="flex-1 min-w-0">
-                      <p className="text-earth-700 text-sm whitespace-pre-wrap">{r.message}</p>
+                      <p className="text-earth-700 text-sm whitespace-pre-wrap">
+                        {r.message}
+                      </p>
                       <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-sm text-earth-500">
                         <span>${r.price.toFixed(2)}</span>
                         <span>Qty: {r.qty}</span>
@@ -338,21 +432,49 @@ export default function ListingDetail() {
                         {new Date(r.createdAt).toLocaleString()}
                       </p>
                     </div>
-                    {isMatched && (
-                      <span className="shrink-0 text-xs font-semibold px-2.5 py-1 rounded-full bg-leaf-200 text-leaf-800">
-                        Matched
-                      </span>
-                    )}
-                    {canMatch && (
-                      <button
-                        type="button"
-                        onClick={() => handleMatch(r._id)}
-                        disabled={matchingResponseId !== null}
-                        className="shrink-0 btn-primary text-sm py-1.5 px-3"
-                      >
-                        {matchingResponseId === r._id ? "Matching..." : "Match"}
-                      </button>
-                    )}
+                    <div className="flex flex-col items-end gap-2 shrink-0">
+                      {isMatched && (
+                        <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-leaf-200 text-leaf-800">
+                          Matched
+                        </span>
+                      )}
+                      {canMatch && (
+                        <button
+                          type="button"
+                          onClick={() => handleMatch(r._id)}
+                          disabled={matchingResponseId !== null}
+                          className="btn-primary text-sm py-1.5 px-3"
+                        >
+                          {matchingResponseId === r._id
+                            ? "Matching..."
+                            : "Match"}
+                        </button>
+                      )}
+                      {isResponseOwner && (
+                        <button
+                          type="button"
+                          onClick={() => setResponseToDelete(r)}
+                          className="inline-flex items-center justify-center w-8 h-8 rounded-full border border-red-200 text-red-700 hover:bg-red-50 transition-colors"
+                          aria-label="Delete your response"
+                        >
+                          <svg
+                            aria-hidden="true"
+                            className="w-4 h-4"
+                            viewBox="0 0 20 20"
+                            fill="none"
+                            xmlns="http://www.w3.org/2000/svg"
+                          >
+                            <path
+                              d="M7.5 8.75V14.25M12.5 8.75V14.25M4.375 5.75H15.625M5.625 5.75L6.25 15.5C6.25 16.1904 6.80964 16.75 7.5 16.75H12.5C13.1904 16.75 13.75 16.1904 13.75 15.5L14.375 5.75M8.75 3.25H11.25C11.9404 3.25 12.5 3.80964 12.5 4.5V5.75H7.5V4.5C7.5 3.80964 8.05964 3.25 8.75 3.25Z"
+                              stroke="currentColor"
+                              strokeWidth="1.5"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            />
+                          </svg>
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </li>
               );
