@@ -276,23 +276,53 @@ export default function NewListing() {
           <label className="block text-sm font-medium text-earth-700 mb-1">
             Upload produce photo <span className="text-red-500">*</span>
           </label>
-          <input
-            type="file"
-            accept="image/jpeg,image/png,image/webp"
-            onChange={handleImageSelect}
-            className="input-field"
-          />
-          {selectedImage && (
-            <p className="text-earth-500 text-xs mt-1">
-              {uploadingImage ? "Uploading..." : `Selected: ${selectedImage.name}`}
-            </p>
-          )}
-          {previewUrl && (
-            <img
-              src={previewUrl}
-              alt="Selected produce preview"
-              className="mt-3 w-full h-48 object-cover rounded-lg border border-earth-200"
+          <label
+            className={`flex flex-col items-center justify-center w-full rounded-xl border-2 border-dashed cursor-pointer transition-colors
+              ${uploadingImage
+                ? "border-leaf-300 bg-leaf-50"
+                : imageId
+                  ? "border-leaf-400 bg-leaf-50"
+                  : "border-earth-300 bg-earth-50 hover:border-leaf-400 hover:bg-leaf-50"
+              }`}
+          >
+            {previewUrl ? (
+              <img
+                src={previewUrl}
+                alt="Selected produce preview"
+                className="w-full h-48 object-cover rounded-xl"
+              />
+            ) : (
+              <div className="flex flex-col items-center gap-2 py-8 px-4 text-center select-none">
+                <svg
+                  className="w-10 h-10 text-earth-400"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth={1.5}
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"
+                  />
+                </svg>
+                <span className="text-sm font-medium text-earth-700">
+                  Click to choose a file
+                </span>
+                <span className="text-xs text-earth-400">JPEG, PNG, WEBP</span>
+              </div>
+            )}
+            <input
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              onChange={handleImageSelect}
+              className="sr-only"
             />
+          </label>
+          {selectedImage && (
+            <p className={`text-xs mt-1.5 ${uploadingImage ? "text-leaf-600 font-medium" : "text-earth-500"}`}>
+              {uploadingImage ? "⏳ Uploading…" : `✓ ${selectedImage.name}`}
+            </p>
           )}
         </div>
 
