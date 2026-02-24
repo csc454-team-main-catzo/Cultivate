@@ -51,78 +51,90 @@ images.post(
   }),
   authMiddleware(),
   async (c) => {
-    const userId = c.get("userId");
-    const formData = await c.req.formData();
-    const image = formData.get("image");
-    if (!(image instanceof File)) {
-      return c.json({ error: "Missing image file in form-data field 'image'" }, 400);
-    }
-    if (image.type && !SUPPORTED_MIME_TYPES.has(image.type)) {
-      return c.json(
-        { error: "Unsupported image format. Use JPEG, PNG, or WEBP." },
-        415
-      );
-    }
-
-    let processedBuffer: Buffer;
-    let info: sharp.OutputInfo;
     try {
-      const originalBuffer = Buffer.from(await image.arrayBuffer());
-      const output = await sharp(originalBuffer)
-        .rotate()
-        .resize({ width: 1600, height: 1600, fit: "inside", withoutEnlargement: true })
-        .jpeg({ quality: 85 })
-        .toBuffer({ resolveWithObject: true });
-      processedBuffer = output.data;
-      info = output.info;
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message.toLowerCase() : "";
-      if (
-        message.includes("heif") ||
-        message.includes("unsupported image format") ||
-        message.includes("input file is missing") ||
-        message.includes("bad seek")
-      ) {
+      const userId = c.get("userId");
+
+      let formData: FormData;
+      try {
+        formData = await c.req.formData();
+      } catch {
+        return c.json({ error: "Could not parse multipart form data" }, 400);
+      }
+
+      const image = formData.get("image");
+      if (!(image instanceof File)) {
+        return c.json({ error: "Missing image file in form-data field 'image'" }, 400);
+      }
+      if (image.type && !SUPPORTED_MIME_TYPES.has(image.type)) {
         return c.json(
           { error: "Unsupported image format. Use JPEG, PNG, or WEBP." },
           415
         );
       }
-      return c.json({ error: "Failed to process image" }, 500);
-    }
 
-    const filename = `${Date.now()}-${image.name || "upload"}.jpg`;
-    const fileId = await uploadBufferToGridFS(processedBuffer, filename, "image/jpeg");
+      let processedBuffer: Buffer;
+      let info: sharp.OutputInfo;
+      try {
+        const originalBuffer = Buffer.from(await image.arrayBuffer());
+        const output = await sharp(originalBuffer)
+          .rotate()
+          .resize({ width: 1600, height: 1600, fit: "inside", withoutEnlargement: true })
+          .jpeg({ quality: 85 })
+          .toBuffer({ resolveWithObject: true });
+        processedBuffer = output.data;
+        info = output.info;
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message.toLowerCase() : "";
+        if (
+          message.includes("heif") ||
+          message.includes("unsupported image format") ||
+          message.includes("input file is missing") ||
+          message.includes("bad seek")
+        ) {
+          return c.json(
+            { error: "Unsupported image format. Use JPEG, PNG, or WEBP." },
+            415
+          );
+        }
+        return c.json({ error: "Failed to process image" }, 500);
+      }
 
-    const imageAsset = await ImageAsset.create({
-      owner: userId,
-      gridFsFileId: fileId,
-      filename,
-      mimeType: "image/jpeg",
-      size: processedBuffer.length,
-      width: info.width ?? null,
-      height: info.height ?? null,
-    });
+      const filename = `${Date.now()}-${image.name || "upload"}.jpg`;
+      const fileId = await uploadBufferToGridFS(processedBuffer, filename, "image/jpeg");
 
-    logJson("image_upload", {
-      userId,
-      imageId: imageAsset._id.toString(),
-      gridFsId: fileId.toString(),
-      outMimeType: "image/jpeg",
-      width: info.width ?? null,
-      height: info.height ?? null,
-      sizeBytes: processedBuffer.length,
-    });
+      const imageAsset = await ImageAsset.create({
+        owner: userId,
+        gridFsFileId: fileId,
+        filename,
+        mimeType: "image/jpeg",
+        size: processedBuffer.length,
+        width: info.width ?? null,
+        height: info.height ?? null,
+      });
 
-    return c.json(
-      {
+      logJson("image_upload", {
+        userId,
         imageId: imageAsset._id.toString(),
-        filename: imageAsset.filename,
-        mimeType: imageAsset.mimeType,
-        size: imageAsset.size,
-      },
-      201
-    );
+        gridFsId: fileId.toString(),
+        outMimeType: "image/jpeg",
+        width: info.width ?? null,
+        height: info.height ?? null,
+        sizeBytes: processedBuffer.length,
+      });
+
+      return c.json(
+        {
+          imageId: imageAsset._id.toString(),
+          filename: imageAsset.filename,
+          mimeType: imageAsset.mimeType,
+          size: imageAsset.size,
+        },
+        201
+      );
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Failed to upload image";
+      return c.json({ error: message }, 500);
+    }
   }
 );
 

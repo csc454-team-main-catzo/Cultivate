@@ -18,13 +18,11 @@ type AppBindings = {
 }
 
 const app = new Hono<AppBindings>()
-app.use(
-  cors({
-    origin: 'https://cultivate-fe.vercel.app',
-    allowMethods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowHeaders: ['Authorization', 'Content-Type'],
-  }),
-)
+app.use(cors({
+  origin: '*',
+  allowHeaders: ['Authorization', 'Content-Type'],
+  allowMethods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+}))
 
 const HealthCheckResponse = v.object({
   healthy: v.boolean(),
@@ -64,6 +62,17 @@ app.get(
     })
   },
 )
+// Ensure CORS headers are present even on unhandled errors.
+// Hono's default error handler creates a brand-new Response that drops any
+// headers previously set by the cors() middleware, so we must re-apply them.
+app.onError((err, c) => {
+  console.error('Unhandled server error:', err)
+  c.header('Access-Control-Allow-Origin', '*')
+  c.header('Access-Control-Allow-Headers', 'Authorization, Content-Type')
+  const message = err instanceof Error ? err.message : 'Internal Server Error'
+  return c.json({ error: message }, 500)
+})
+
 // Mount resource routers
 app.route('/listings', listingRoutes)
 app.route('/users', userRoutes)
