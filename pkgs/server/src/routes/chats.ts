@@ -175,7 +175,7 @@ chats.post("/threads/:id/messages", authMiddleware(), async (c) => {
     }
 
     const isParticipant = thread.participants.some(
-      (p) => p.toString() === userId
+      (p: any) => p.toString() === userId
     );
 
     if (!isParticipant) {
