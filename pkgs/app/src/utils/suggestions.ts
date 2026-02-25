@@ -19,8 +19,14 @@ export interface SuggestionContext {
 
 // Patterns used to detect whether a topic has already been covered.
 const HAS_QUANTITY = /\b\d+\b/
-const HAS_QUALITY = /\b(quality|organic|fresh|ripe|seasonal|variety|grade|harvested|heirloom)\b/i
+// "fresh" intentionally excluded: it is too generic (almost every description
+// starts with "Fresh X") and would block the quality suggestion for the
+// majority of users. More specific quality terms still apply.
+const HAS_QUALITY = /\b(quality|organic|ripe|seasonal|variety|grade|harvested|heirloom|locally.grown|home.grown|vine.ripened)\b/i
 const HAS_LOGISTICS = /\b(pickup|pick.?up|delivery|deliver|available|collection|ship)\b/i
+// Literal placeholder text produced by the AI draft generator that the user
+// still needs to replace with their actual pickup window.
+const IS_DRAFT_PLACEHOLDER = /Message for pickup|pickup window/i
 
 /**
  * Returns a ghost-text suffix to append to `text`, or null when no suggestion
@@ -48,22 +54,33 @@ export function getListingDescriptionSuggestion(
     return "Freshly harvested local produce, available this week."
   }
 
-  // Rules 1-3 each prepend a space, so they create natural word separation
-  // even when the user is mid-word — no word-boundary guard needed.
+  // Rules below each prepend a space for natural word separation mid-word.
 
   // ── Rule 1: quantity not yet mentioned ──────────────────────────────────
   if (trimmed.length > 5 && !HAS_QUANTITY.test(trimmed) && ctx.qty && ctx.unit) {
     return ` ${ctx.qty} ${ctx.unit} available.`
   }
 
-  // ── Rule 2: quality not yet mentioned (enough context to be meaningful) ──
-  if (trimmed.length > 10 && !HAS_QUALITY.test(trimmed)) {
-    return " Freshly harvested, excellent quality."
+  // ── Rule 2: quality not yet mentioned ───────────────────────────────────
+  if (trimmed.length > 5 && !HAS_QUALITY.test(trimmed)) {
+    return " Locally grown, excellent quality."
   }
 
-  // ── Rule 3: logistics not yet mentioned (enough context to be meaningful) ─
-  if (trimmed.length > 20 && !HAS_LOGISTICS.test(trimmed)) {
+  // ── Rule 3: logistics not yet mentioned ─────────────────────────────────
+  if (trimmed.length > 15 && !HAS_LOGISTICS.test(trimmed)) {
     return " Available for pickup or local delivery."
+  }
+
+  // ── Rule 4: AI-draft placeholder not yet replaced ───────────────────────
+  // Fires only while the literal "Message for pickup" / "pickup window" text
+  // from the generated draft is still present; disappears once the user
+  // replaces it with their actual schedule, OR once they have already accepted
+  // this suggestion (so it doesn't re-fire after Tab).
+  if (
+    IS_DRAFT_PLACEHOLDER.test(trimmed) &&
+    !/Contact us to arrange a pickup time/i.test(trimmed)
+  ) {
+    return " Contact us to arrange a pickup time."
   }
 
   return null
