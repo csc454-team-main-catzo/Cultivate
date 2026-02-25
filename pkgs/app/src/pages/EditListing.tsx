@@ -1,9 +1,11 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useApi } from "../providers/apiContext";
 import { useUser } from "../providers/userContext";
 import { useListingActions } from "../hooks/useListingActions";
 import { geocodeZipCode } from "../utils/geocode";
+import GhostTextarea from "../components/GhostTextarea";
+import { getListingDescriptionSuggestion } from "../utils/suggestions";
 
 interface ListingData {
   _id: string;
@@ -36,6 +38,16 @@ export default function EditListing() {
   const [zipCode, setZipCode] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+
+  const getDescriptionSuggestion = useCallback(
+    (text: string) =>
+      getListingDescriptionSuggestion(text, {
+        itemName: item,
+        qty,
+        price,
+      }),
+    [item, qty, price]
+  );
 
   useEffect(() => {
     const listingId = id;
@@ -182,11 +194,11 @@ export default function EditListing() {
           <label className="block text-sm font-medium text-earth-700 mb-1">
             Description <span className="text-red-500">*</span>
           </label>
-          <textarea
+          <GhostTextarea
             value={description}
-            onChange={(e) => setDescription(e.target.value)}
+            onChange={(v) => setDescription(v)}
+            getSuggestion={getDescriptionSuggestion}
             rows={3}
-            className="input-field resize-y min-h-[80px]"
             maxLength={2000}
           />
         </div>

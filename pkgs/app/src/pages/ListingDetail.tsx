@@ -1,9 +1,11 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link, useParams, useNavigate } from "react-router-dom";
 import { useApi } from "../providers/apiContext";
 import { useUser } from "../providers/userContext";
 import { useListingActions } from "../hooks/useListingActions";
 import CFG from "../config";
+import GhostTextarea from "../components/GhostTextarea";
+import { getMessageSuggestion } from "../utils/suggestions";
 
 interface ResponseItem {
   _id: string;
@@ -66,6 +68,18 @@ export default function ListingDetail() {
   const [matchingResponseId, setMatchingResponseId] = useState<string | null>(null);
   const [fulfilling, setFulfilling] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+
+  // Placed before early returns to satisfy Rules of Hooks. listing is null
+  // until the fetch resolves, so optional chaining with fallbacks is used.
+  const getResponseSuggestion = useCallback(
+    (text: string) =>
+      getMessageSuggestion(text, {
+        itemName: listing?.item ?? "",
+        qty: String(listing?.qty ?? ""),
+        price: String(listing?.price ?? ""),
+      }),
+    [listing?.item, listing?.qty, listing?.price]
+  );
 
   useEffect(() => {
     const listingId = id;
@@ -512,12 +526,12 @@ export default function ListingDetail() {
               <label className="block text-sm font-medium text-earth-700 mb-1">
                 Your message <span className="text-red-500">*</span>
               </label>
-              <textarea
+              <GhostTextarea
                 value={message}
-                onChange={(e) => setMessage(e.target.value)}
+                onChange={(v) => setMessage(v)}
+                getSuggestion={getResponseSuggestion}
                 placeholder="Describe your offer or interest..."
                 rows={3}
-                className="input-field resize-y min-h-[80px]"
                 maxLength={2000}
               />
             </div>

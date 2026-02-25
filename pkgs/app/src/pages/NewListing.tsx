@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useUser } from "../providers/userContext";
 import { geocodeZipCode } from "../utils/geocode";
@@ -8,6 +8,8 @@ import {
   type DraftSuggestedFields,
   useListingActions,
 } from "../hooks/useListingActions";
+import GhostTextarea from "../components/GhostTextarea";
+import { getListingDescriptionSuggestion } from "../utils/suggestions";
 
 interface ListingFormValues {
   itemId: string;
@@ -113,6 +115,20 @@ export default function NewListing() {
 
     return null;
   }
+
+  // Memoised so GhostTextarea's debounce effect only re-fires when relevant
+  // form fields change, not on every render.
+  const getDescriptionSuggestion = useCallback(
+    (text: string) =>
+      getListingDescriptionSuggestion(text, {
+        itemName: form.itemName,
+        qty: form.qty,
+        unit: form.unit,
+        price: form.price,
+        priceUnit: form.priceUnit,
+      }),
+    [form.itemName, form.qty, form.unit, form.price, form.priceUnit]
+  );
 
   async function handleImageSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -427,12 +443,12 @@ export default function NewListing() {
           <label className="block text-sm font-medium text-earth-700 mb-1">
             Description <span className="text-red-500">*</span>
           </label>
-          <textarea
+          <GhostTextarea
             value={form.description}
-            onChange={(e) => updateField("description", e.target.value)}
+            onChange={(v) => updateField("description", v)}
+            getSuggestion={getDescriptionSuggestion}
             placeholder="Describe what you're offering or looking for — variety, quality, etc."
             rows={3}
-            className="input-field resize-y min-h-[80px]"
             maxLength={2000}
           />
         </div>
