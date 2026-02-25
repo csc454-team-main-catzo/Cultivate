@@ -8,6 +8,7 @@ import imageRoutes from './routes/images.js'
 import listingRoutes from './routes/listings.js'
 import produceItemRoutes from './routes/produce-items.js'
 import userRoutes from './routes/users.js'
+import chatRoutes from './routes/chats.js'
 
 type AppBindings = {
   Variables: any
@@ -77,6 +78,7 @@ app.route('/users', userRoutes)
 app.route('/api/listings', listingRoutes)
 app.route('/api', imageRoutes)
 app.route('/api', produceItemRoutes)
+app.route('/api/chat', chatRoutes)
 
 app.get(
   '/openapi.json',
