@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useParams, useNavigate } from "react-router-dom";
+import { useAuth0 } from "@auth0/auth0-react";
 import { useApi } from "../providers/apiContext";
 import { useUser } from "../providers/userContext";
 import { useListingActions } from "../hooks/useListingActions";
@@ -35,6 +36,7 @@ export default function ListingDetail() {
   const navigate = useNavigate();
   const { listings: listingsApi } = useApi();
   const { user } = useUser();
+  const { isAuthenticated, getAccessTokenSilently, loginWithRedirect } = useAuth0();
   const {
     deleteListing,
     updateListing,
@@ -66,6 +68,7 @@ export default function ListingDetail() {
   const [matchingResponseId, setMatchingResponseId] = useState<string | null>(null);
   const [fulfilling, setFulfilling] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [chatError, setChatError] = useState<string | null>(null);
 
   useEffect(() => {
     const listingId = id;
@@ -199,6 +202,58 @@ export default function ListingDetail() {
       setActionError(err instanceof Error ? err.message : "Failed to update.");
     } finally {
       setFulfilling(false);
+    }
+  }
+
+  async function handleOpenChat(response: ResponseItem) {
+    if (!listing) return;
+
+    setChatError(null);
+
+    if (!isAuthenticated) {
+      await loginWithRedirect({
+        appState: { returnTo: window.location.pathname },
+      });
+      return;
+    }
+
+    try {
+      const token = await getAccessTokenSilently({
+        authorizationParams: {
+          audience: CFG.AUTH0_AUDIENCE,
+        },
+      });
+
+      const res = await fetch(`${CFG.API_URL}/api/chat/threads/ensure`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          listingId: listing._id,
+          responseId: response._id,
+        }),
+      });
+
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(body.error || `Failed to open chat (${res.status})`);
+      }
+
+      const thread = (await res.json()) as { _id: string };
+      navigate(`/chat/${thread._id}`, {
+        state: {
+          listing,
+          response,
+          from: "listing" as const,
+        },
+      });
+    } catch (err) {
+      console.error("Failed to open chat:", err);
+      const msg =
+        err instanceof Error ? err.message : "Failed to open chat. Please try again.";
+      setChatError(msg);
     }
   }
 
@@ -352,6 +407,11 @@ export default function ListingDetail() {
           {actionError}
         </div>
       )}
+      {chatError && (
+        <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">
+          {chatError}
+        </div>
+      )}
 
       {responseToDelete && (
         <div
@@ -411,6 +471,8 @@ export default function ListingDetail() {
               const canMatch =
                 isOwner && listing.status === "open" && !isMatched;
               const isResponseOwner = user?._id === r.createdBy?._id;
+              const canChat =
+                isOwner || isResponseOwner;
               return (
                 <li
                   key={r._id}
@@ -466,6 +528,30 @@ export default function ListingDetail() {
                           >
                             <path
                               d="M7.5 8.75V14.25M12.5 8.75V14.25M4.375 5.75H15.625M5.625 5.75L6.25 15.5C6.25 16.1904 6.80964 16.75 7.5 16.75H12.5C13.1904 16.75 13.75 16.1904 13.75 15.5L14.375 5.75M8.75 3.25H11.25C11.9404 3.25 12.5 3.80964 12.5 4.5V5.75H7.5V4.5C7.5 3.80964 8.05964 3.25 8.75 3.25Z"
+                              stroke="currentColor"
+                              strokeWidth="1.5"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            />
+                          </svg>
+                        </button>
+                      )}
+                      {canChat && (
+                        <button
+                          type="button"
+                          onClick={() => handleOpenChat(r)}
+                          className="inline-flex items-center justify-center w-8 h-8 rounded-full border border-earth-200 text-earth-700 hover:bg-earth-50 transition-colors"
+                          aria-label="Open chat"
+                        >
+                          <svg
+                            aria-hidden="true"
+                            className="w-4 h-4"
+                            viewBox="0 0 20 20"
+                            fill="none"
+                            xmlns="http://www.w3.org/2000/svg"
+                          >
+                            <path
+                              d="M4 5.5C4 4.67157 4.67157 4 5.5 4H14.5C15.3284 4 16 4.67157 16 5.5V10.5C16 11.3284 15.3284 12 14.5 12H8.41421L5.70711 14.7071C5.07714 15.3371 4 14.891 4 13.9929V5.5Z"
                               stroke="currentColor"
                               strokeWidth="1.5"
                               strokeLinecap="round"
