@@ -2,11 +2,14 @@ import mongoose, { Schema, Document, Types } from "mongoose";
 
 /* ---------- Response (offer) subdocument ---------- */
 
+export type ResponseUnit = "kg" | "lb" | "count" | "bunch";
+
 export interface IResponse {
   _id: Types.ObjectId;
   message: string;
   price: number;
   qty: number;
+  unit: ResponseUnit;
   createdBy: Types.ObjectId;
   createdAt: Date;
 }
@@ -28,6 +31,14 @@ const ResponseSchema = new Schema<IResponse>(
       type: Number,
       required: [true, "Quantity is required"],
       min: [1, "Quantity must be at least 1"],
+    },
+    unit: {
+      type: String,
+      enum: {
+        values: ["kg", "lb", "count", "bunch"],
+        message: "{VALUE} is not a valid unit",
+      },
+      default: "kg",
     },
     createdBy: {
       type: Schema.Types.ObjectId,
@@ -54,6 +65,7 @@ export interface IListing extends Document {
   description: string;
   price: number;
   qty: number;
+  unit: string;
   photos: Array<{ imageId: string }>;
   latLng: [number, number];
   createdBy: Types.ObjectId;
@@ -102,6 +114,14 @@ const ListingSchema = new Schema<IListing>(
       type: Number,
       required: [true, "Quantity is required"],
       min: [1, "Quantity must be at least 1"],
+    },
+    unit: {
+      type: String,
+      enum: {
+        values: ["kg", "lb", "count", "bunch"],
+        message: "{VALUE} is not a valid unit",
+      },
+      default: "kg",
     },
     photos: {
       type: [

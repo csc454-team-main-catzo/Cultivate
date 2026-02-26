@@ -71,6 +71,7 @@ export interface CreateListingRequest {
     'description': string;
     'price': number;
     'qty': number;
+    'unit'?: 'kg' | 'lb' | 'count' | 'bunch';
     'latLng': Array<number>;
     'expiresAt'?: string | null;
 }
@@ -86,6 +87,7 @@ export interface CreateListingResponseRequest {
     'message': string;
     'price': number;
     'qty': number;
+    'unit'?: 'kg' | 'lb' | 'count' | 'bunch';
 }
 export interface Healthcheck200Response {
     'healthy': boolean;
@@ -101,6 +103,7 @@ export interface ListListings200ResponseInner {
     'description': string | null;
     'price': number;
     'qty': number;
+    'unit'?: 'kg' | 'lb' | 'count' | 'bunch';
     'latLng': Array<any>;
     'createdBy': ListListings200ResponseInnerCreatedBy;
     'matchedResponseId': string | null;

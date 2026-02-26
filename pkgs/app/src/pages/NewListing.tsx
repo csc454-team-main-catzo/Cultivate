@@ -19,7 +19,6 @@ interface ListingFormValues {
   qty: string;
   unit: string;
   price: string;
-  priceUnit: string;
   availability: {
     startAt: string;
     endAt: string;
@@ -38,7 +37,6 @@ const INITIAL_FORM: ListingFormValues = {
   qty: "",
   unit: "",
   price: "",
-  priceUnit: "",
   availability: {
     startAt: "",
     endAt: "",
@@ -99,7 +97,6 @@ export default function NewListing() {
     if (!values.qty.trim()) return "Quantity is required";
     if (!values.unit.trim()) return "Unit is required";
     if (!values.price.trim()) return "Price is required";
-    if (!values.priceUnit.trim()) return "Price unit is required";
     if (!values.zipCode.trim()) return "Postal code is required";
     if (!values.photos[0]?.imageId) return "Photo upload is required";
 
@@ -125,9 +122,9 @@ export default function NewListing() {
         qty: form.qty,
         unit: form.unit,
         price: form.price,
-        priceUnit: form.priceUnit,
+        priceUnit: form.unit,
       }),
-    [form.itemName, form.qty, form.unit, form.price, form.priceUnit]
+    [form.itemName, form.qty, form.unit, form.price]
   );
 
   async function handleImageSelect(e: React.ChangeEvent<HTMLInputElement>) {
@@ -192,7 +189,6 @@ export default function NewListing() {
   function applyDraftSafeOnly(suggestedFields: DraftSuggestedFields) {
     const suggestedItemName = suggestedFields.itemName?.trim() || "";
     const suggestedUnit = suggestedFields.unit?.trim() || "";
-    const suggestedPriceUnit = suggestedFields.priceUnit?.trim() || suggestedUnit;
     setForm((prev) => ({
       ...prev,
       itemId: suggestedFields.itemId || prev.itemId,
@@ -209,7 +205,6 @@ export default function NewListing() {
           ? suggestedFields.price.toFixed(2)
           : prev.price,
       unit: suggestedUnit || prev.unit,
-      priceUnit: suggestedPriceUnit || prev.priceUnit,
       attributes:
         suggestedFields.attributes !== undefined
           ? suggestedFields.attributes
@@ -224,11 +219,6 @@ export default function NewListing() {
     const all = [...fromDraft, ...DEFAULT_UNIT_OPTIONS];
     return Array.from(new Set(all.filter(Boolean)));
   }, [draft?.suggestedFields.unitOptions]);
-  const priceUnitOptions = useMemo(() => {
-    const fromDraft = draft?.suggestedFields.priceUnitOptions || [];
-    const all = [...fromDraft, ...DEFAULT_UNIT_OPTIONS];
-    return Array.from(new Set(all.filter(Boolean)));
-  }, [draft?.suggestedFields.priceUnitOptions]);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -254,6 +244,7 @@ export default function NewListing() {
         description: form.description.trim(),
         price,
         qty,
+        unit: (form.unit || "kg") as "kg" | "lb" | "count" | "bunch",
         latLng,
         photos: form.photos,
       });
@@ -382,8 +373,8 @@ export default function NewListing() {
                 <p>
                   <span className="font-medium">Suggested price:</span>{" "}
                   ${draft.suggestedFields.price.toFixed(2)}
-                  {draft.suggestedFields.priceUnit
-                    ? ` per ${draft.suggestedFields.priceUnit}`
+                  {draft.suggestedFields.unit
+                    ? ` per ${draft.suggestedFields.unit}`
                     : ""}
                 </p>
               )}
@@ -489,7 +480,7 @@ export default function NewListing() {
 
         <div>
           <label className="block text-sm font-medium text-earth-700 mb-1">
-            Price <span className="text-red-500">*</span>
+            Price{form.unit ? ` per ${form.unit}` : ""} <span className="text-red-500">*</span>
           </label>
           <input
             type="number"
@@ -501,24 +492,6 @@ export default function NewListing() {
             step="0.01"
             className="input-field"
           />
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-earth-700 mb-1">
-            Price unit <span className="text-red-500">*</span>
-          </label>
-          <select
-            value={form.priceUnit}
-            onChange={(e) => updateField("priceUnit", e.target.value)}
-            className="input-field"
-          >
-            <option value="">Select a price unit</option>
-            {priceUnitOptions.map((unit) => (
-              <option key={unit} value={unit}>
-                {unit}
-              </option>
-            ))}
-          </select>
         </div>
 
         {/* <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

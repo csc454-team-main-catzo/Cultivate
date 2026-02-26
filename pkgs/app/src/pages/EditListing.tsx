@@ -7,6 +7,8 @@ import { geocodeZipCode } from "../utils/geocode";
 import GhostTextarea from "../components/GhostTextarea";
 import { getListingDescriptionSuggestion } from "../utils/suggestions";
 
+type ListingUnit = "kg" | "lb" | "count" | "bunch";
+
 interface ListingData {
   _id: string;
   type: "demand" | "supply";
@@ -15,6 +17,7 @@ interface ListingData {
   description: string;
   price: number;
   qty: number;
+  unit?: ListingUnit;
   latLng: [number, number];
   createdBy: { _id: string };
   status: string;
@@ -35,6 +38,7 @@ export default function EditListing() {
   const [description, setDescription] = useState("");
   const [price, setPrice] = useState("");
   const [qty, setQty] = useState("");
+  const [unit, setUnit] = useState<ListingUnit>("kg");
   const [zipCode, setZipCode] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -44,9 +48,11 @@ export default function EditListing() {
       getListingDescriptionSuggestion(text, {
         itemName: item,
         qty,
+        unit,
         price,
+        priceUnit: unit,
       }),
-    [item, qty, price]
+    [item, qty, unit, price]
   );
 
   useEffect(() => {
@@ -65,6 +71,7 @@ export default function EditListing() {
         setDescription(data.description);
         setPrice(String(data.price));
         setQty(String(data.qty));
+        if (data.unit) setUnit(data.unit);
       } catch {
         setError("Could not load listing.");
       } finally {
@@ -101,6 +108,7 @@ export default function EditListing() {
         description: description.trim(),
         price: isNaN(priceNum) || priceNum < 0 ? 0 : priceNum,
         qty: qtyNum,
+        unit,
       };
 
       if (zipCode.trim()) {
@@ -204,7 +212,22 @@ export default function EditListing() {
         </div>
         <div>
           <label className="block text-sm font-medium text-earth-700 mb-1">
-            Price per unit ($)
+            Unit <span className="text-red-500">*</span>
+          </label>
+          <select
+            value={unit}
+            onChange={(e) => setUnit(e.target.value as ListingUnit)}
+            className="input-field"
+          >
+            <option value="kg">kg</option>
+            <option value="lb">lb</option>
+            <option value="count">count</option>
+            <option value="bunch">bunch</option>
+          </select>
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-earth-700 mb-1">
+            Price per {unit} ($)
           </label>
           <input
             type="number"

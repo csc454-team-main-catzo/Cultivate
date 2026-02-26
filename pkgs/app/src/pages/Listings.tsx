@@ -10,6 +10,7 @@ interface Listing {
   description: string;
   price: number;
   qty: number;
+  unit?: string;
   status: string;
   createdBy: { _id: string; name: string; email: string; role?: "farmer" | "restaurant" };
   responses?: unknown[];
@@ -121,8 +122,8 @@ export default function Listings() {
                 <p className="text-earth-600 text-sm mt-2 line-clamp-2">{l.description}</p>
                 <div className="flex flex-wrap gap-x-4 gap-y-1 mt-3 text-sm text-earth-500">
                   <span>{l.item}</span>
-                  <span>Qty: {l.qty}</span>
-                  <span>${l.price.toFixed(2)}</span>
+                  <span>Qty: {l.qty} {l.unit ?? "kg"}</span>
+                  <span>${l.price.toFixed(2)}/{l.unit ?? "kg"}</span>
                   <span className="capitalize">{l.status}</span>
                 </div>
                 <p className="text-xs text-earth-400 mt-2">

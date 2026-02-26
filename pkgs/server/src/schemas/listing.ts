@@ -21,11 +21,17 @@ const PopulatedUserSchema = v.object({
   role: v.optional(v.picklist(["farmer", "restaurant", "admin"])),
 });
 
+const ResponseUnitSchema = v.picklist(
+  ["kg", "lb", "count", "bunch"],
+  "Unit must be one of: kg, lb, count, bunch"
+);
+
 const ResponseSubdocSchema = v.object({
   _id: v.string(),
   message: v.string(),
   price: v.number(),
   qty: v.number(),
+  unit: v.optional(ResponseUnitSchema, "kg"),
   createdBy: PopulatedUserSchema,
   createdAt: v.string(),
 });
@@ -52,6 +58,7 @@ export const ListingCreateSchema = v.object({
   ),
   price: v.pipe(v.number(), v.minValue(0, "Price cannot be negative")),
   qty: v.pipe(v.number(), v.minValue(1, "Quantity must be at least 1")),
+  unit: v.optional(ResponseUnitSchema, "kg"),
   photos: v.optional(
     v.array(
       v.object({
@@ -97,6 +104,7 @@ export const ListingUpdateSchema = v.partial(
     ),
     price: v.pipe(v.number(), v.minValue(0, "Price cannot be negative")),
     qty: v.pipe(v.number(), v.minValue(1, "Quantity must be at least 1")),
+    unit: ResponseUnitSchema,
     status: ListingStatusSchema,
     latLng: v.pipe(
       v.array(v.number()),
@@ -135,6 +143,7 @@ export const ResponseCreateSchema = v.object({
   ),
   price: v.pipe(v.number(), v.minValue(0, "Price cannot be negative")),
   qty: v.pipe(v.number(), v.minValue(1, "Quantity must be at least 1")),
+  unit: v.optional(ResponseUnitSchema, "kg"),
 });
 
 export type ResponseCreateInput = v.InferOutput<typeof ResponseCreateSchema>;
@@ -149,6 +158,7 @@ export const ListingResponseSchema = v.object({
   description: v.string(),
   price: v.number(),
   qty: v.number(),
+  unit: v.optional(ResponseUnitSchema, "kg"),
     photos: v.array(
       v.object({
         imageId: v.string(),
