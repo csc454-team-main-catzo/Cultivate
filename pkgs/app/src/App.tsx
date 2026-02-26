@@ -8,6 +8,8 @@ import Listings from "./pages/Listings"
 import NewListing from "./pages/NewListing"
 import ListingDetail from "./pages/ListingDetail"
 import EditListing from "./pages/EditListing"
+import ChatThread from "./pages/ChatThread"
+import Messages from "./pages/Messages"
 
 function App() {
   return (
@@ -22,6 +24,8 @@ function App() {
           <Route path="listings/new" element={<NewListing />} />
           <Route path="listings/:id" element={<ListingDetail />} />
           <Route path="listings/:id/edit" element={<EditListing />} />
+          <Route path="messages" element={<Messages />} />
+          <Route path="chat/:id" element={<ChatThread />} />
         </Route>
       </Route>
     </Routes>

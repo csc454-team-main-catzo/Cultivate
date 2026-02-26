@@ -5,6 +5,7 @@ import type { AuthenticatedContext } from "../middleware/types.js";
 import DraftSuggestion from "../models/DraftSuggestion.js";
 import ImageAsset from "../models/ImageAsset.js";
 import Listing, { type IResponse } from "../models/Listing.js";
+import ChatThread, { type IChatThread } from "../models/ChatThread.js";
 import CFG from "../config.js";
 import { downloadBufferFromGridFS } from "../services/gridfs.js";
 import { matchProduceFromTags, toTitleCase } from "../services/produceMatcher.js";
@@ -373,6 +374,28 @@ listings.post(
       } as any);
 
       await listing.save();
+
+      // Ensure a chat thread exists between the listing owner and responder
+      const latestResponse = listing.responses[listing.responses.length - 1];
+      if (latestResponse) {
+        const participantIds = [
+          listing.createdBy.toString(),
+          latestResponse.createdBy.toString(),
+        ].sort();
+
+        const existingThread = await ChatThread.findOne({
+          listing: listing._id,
+          response: latestResponse._id,
+        });
+
+        if (!existingThread) {
+          await ChatThread.create({
+            listing: listing._id,
+            response: latestResponse._id,
+            participants: participantIds,
+          } as Partial<IChatThread>);
+        }
+      }
 
       const populated = await Listing.findById(listing._id)
         .populate("createdBy", "name email role")
