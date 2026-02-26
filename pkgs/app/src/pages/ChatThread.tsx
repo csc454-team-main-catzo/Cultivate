@@ -49,6 +49,7 @@ interface ListingSummary {
   description: string;
   price: number;
   qty: number;
+  unit?: string;
   status: string;
   createdBy: { _id: string; name: string; email: string; role?: "farmer" | "restaurant" };
 }
@@ -92,6 +93,7 @@ export default function ChatThread() {
   const getSuggestionFn = useMemo(() => {
     const ctx: ChatSuggestionContext = {
       listingTitle: listing?.title,
+      listingDescription: listing?.description,
       itemName: listing?.item,
       qty: listing?.qty != null ? String(listing.qty) : undefined,
       unit: response?.unit ?? undefined,
@@ -296,8 +298,8 @@ export default function ChatThread() {
           </p>
           <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-earth-500">
             <span>{listing.item}</span>
-            <span>Qty: {listing.qty}</span>
-            <span>${listing.price.toFixed(2)}</span>
+            <span>Qty: {listing.qty} {listing.unit ?? "kg"}</span>
+            <span>${listing.price.toFixed(2)}/{listing.unit ?? "kg"}</span>
           </div>
           <p className="text-xs text-earth-400 mt-1">
             by {listing.createdBy?.name || "Unknown"}

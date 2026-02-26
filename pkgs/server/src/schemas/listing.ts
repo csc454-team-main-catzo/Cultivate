@@ -58,6 +58,7 @@ export const ListingCreateSchema = v.object({
   ),
   price: v.pipe(v.number(), v.minValue(0, "Price cannot be negative")),
   qty: v.pipe(v.number(), v.minValue(1, "Quantity must be at least 1")),
+  unit: v.optional(ResponseUnitSchema, "kg"),
   photos: v.optional(
     v.array(
       v.object({
@@ -103,6 +104,7 @@ export const ListingUpdateSchema = v.partial(
     ),
     price: v.pipe(v.number(), v.minValue(0, "Price cannot be negative")),
     qty: v.pipe(v.number(), v.minValue(1, "Quantity must be at least 1")),
+    unit: ResponseUnitSchema,
     status: ListingStatusSchema,
     latLng: v.pipe(
       v.array(v.number()),
@@ -156,6 +158,7 @@ export const ListingResponseSchema = v.object({
   description: v.string(),
   price: v.number(),
   qty: v.number(),
+  unit: v.optional(ResponseUnitSchema, "kg"),
     photos: v.array(
       v.object({
         imageId: v.string(),

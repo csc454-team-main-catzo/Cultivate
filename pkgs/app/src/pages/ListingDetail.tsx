@@ -28,6 +28,7 @@ interface ListingDetailData {
   description: string;
   price: number;
   qty: number;
+  unit?: string;
   photos?: Array<{ imageId: string }>;
   status: string;
   matchedResponseId: string | null;
@@ -348,8 +349,8 @@ export default function ListingDetail() {
         <p className="text-earth-600 text-sm mb-3">{listing.description}</p>
         <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-earth-500">
           <span>{listing.item}</span>
-          <span>Qty: {listing.qty}</span>
-          <span>${listing.price.toFixed(2)}</span>
+          <span>Qty: {listing.qty} {listing.unit ?? "kg"}</span>
+          <span>${listing.price.toFixed(2)}/{listing.unit ?? "kg"}</span>
         </div>
         <p className="text-xs text-earth-400 mt-2">
           by {listing.createdBy?.name || "Unknown"}

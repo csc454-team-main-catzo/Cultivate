@@ -8,6 +8,7 @@ export interface UpdateListingBody {
   description?: string;
   price?: number;
   qty?: number;
+  unit?: "kg" | "lb" | "count" | "bunch";
   status?: string;
   latLng?: [number, number];
 }
@@ -19,6 +20,7 @@ export interface CreateListingBody {
   description: string;
   price: number;
   qty: number;
+  unit?: "kg" | "lb" | "count" | "bunch";
   latLng: [number, number];
   photos?: Array<{ imageId: string }>;
 }
