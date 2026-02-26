@@ -8,11 +8,14 @@ import CFG from "../config";
 import GhostTextarea from "../components/GhostTextarea";
 import { getMessageSuggestion } from "../utils/suggestions";
 
+type ResponseUnit = "kg" | "lb" | "count" | "bunch";
+
 interface ResponseItem {
   _id: string;
   message: string;
   price: number;
   qty: number;
+  unit?: ResponseUnit;
   createdBy: { _id: string; name: string; email: string };
   createdAt: string;
 }
@@ -53,6 +56,7 @@ export default function ListingDetail() {
   const [message, setMessage] = useState("");
   const [price, setPrice] = useState("");
   const [qty, setQty] = useState("");
+  const [unit, setUnit] = useState<ResponseUnit>("kg");
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
@@ -136,6 +140,7 @@ export default function ListingDetail() {
           message: message.trim(),
           price: priceNum,
           qty: qtyNum,
+          unit,
         },
       });
       const updated = (response as { data?: ListingDetailData }).data ?? response;
@@ -143,6 +148,7 @@ export default function ListingDetail() {
       setMessage("");
       setPrice("");
       setQty("");
+      setUnit("kg");
     } catch (err: unknown) {
       const msg =
         err && typeof err === "object" && "response" in err
@@ -500,8 +506,8 @@ export default function ListingDetail() {
                         {r.message}
                       </p>
                       <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-sm text-earth-500">
-                        <span>${r.price.toFixed(2)}</span>
-                        <span>Qty: {r.qty}</span>
+                        <span>${r.price.toFixed(2)} / {r.unit ?? "kg"}</span>
+                        <span>Qty: {r.qty} {r.unit ?? "kg"}</span>
                       </div>
                       <p className="text-xs text-earth-400 mt-1">
                         by {r.createdBy?.name || "Unknown"} ·{" "}
@@ -635,21 +641,34 @@ export default function ListingDetail() {
                   step="0.01"
                   className="input-field"
                 />
-                <p className="text-earth-500 text-xs mt-1">Price you’re offering per unit (e.g. per lb).</p>
+                <p className="text-earth-500 text-xs mt-1">Price you’re offering per {unit}.</p>
               </div>
               <div>
                 <label className="block text-sm font-medium text-earth-700 mb-1">
                   Quantity <span className="text-red-500">*</span>
                 </label>
-                <input
-                  type="number"
-                  value={qty}
-                  onChange={(e) => setQty(e.target.value)}
-                  placeholder="1"
-                  min="1"
-                  step="1"
-                  className="input-field"
-                />
+                <div className="flex gap-2">
+                  <input
+                    type="number"
+                    value={qty}
+                    onChange={(e) => setQty(e.target.value)}
+                    placeholder="1"
+                    min="1"
+                    step="1"
+                    className="input-field flex-1 min-w-0"
+                  />
+                  <select
+                    value={unit}
+                    onChange={(e) => setUnit(e.target.value as ResponseUnit)}
+                    className="input-field w-24 shrink-0"
+                    aria-label="Unit"
+                  >
+                    <option value="kg">kg</option>
+                    <option value="lb">lb</option>
+                    <option value="count">count</option>
+                    <option value="bunch">bunch</option>
+                  </select>
+                </div>
               </div>
             </div>
             <button

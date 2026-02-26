@@ -86,6 +86,7 @@ export interface CreateListingResponseRequest {
     'message': string;
     'price': number;
     'qty': number;
+    'unit'?: 'kg' | 'lb' | 'count' | 'bunch';
 }
 export interface Healthcheck200Response {
     'healthy': boolean;

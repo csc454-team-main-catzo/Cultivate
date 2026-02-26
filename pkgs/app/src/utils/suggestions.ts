@@ -134,10 +134,12 @@ export function getChatSuggestion(
   if (trimmed.length === 0) {
     if (!ctx.isNewThread) return null
 
+    const unitLabel = ctx.unit ?? "units"
+
     if (ctx.isResponder) {
       // Current user submitted the response/offer — open with a follow-up on it.
       if (ctx.listingTitle && ctx.responseQty && ctx.responsePrice) {
-        return `Hi! I sent an offer for your ${ctx.listingTitle} — ${ctx.responseQty} units at $${ctx.responsePrice}. Looking forward to connecting!`
+        return `Hi! I sent an offer for your ${ctx.listingTitle} — ${ctx.responseQty} ${unitLabel} at $${ctx.responsePrice}. Looking forward to connecting!`
       }
       if (ctx.listingTitle) {
         return `Hi! I'm following up on my offer for your ${ctx.listingTitle} listing.`
@@ -146,7 +148,7 @@ export function getChatSuggestion(
     } else {
       // Current user owns the listing — open by acknowledging the incoming offer.
       if (ctx.responseQty && ctx.responsePrice && ctx.itemName) {
-        return `Thanks for your interest in ${ctx.itemName}! Your offer of ${ctx.responseQty} units at $${ctx.responsePrice} looks great.`
+        return `Thanks for your interest in ${ctx.itemName}! Your offer of ${ctx.responseQty} ${unitLabel} at $${ctx.responsePrice} looks great.`
       }
       if (ctx.listingTitle && ctx.responsePrice) {
         return `Thanks for reaching out about the ${ctx.listingTitle} listing! Your offer of $${ctx.responsePrice} looks interesting.`

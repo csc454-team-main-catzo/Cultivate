@@ -36,6 +36,7 @@ interface ResponseItem {
   message: string;
   price: number;
   qty: number;
+  unit?: "kg" | "lb" | "count" | "bunch";
   createdBy: { _id: string; name: string; email: string };
   createdAt: string;
 }
@@ -93,7 +94,7 @@ export default function ChatThread() {
       listingTitle: listing?.title,
       itemName: listing?.item,
       qty: listing?.qty != null ? String(listing.qty) : undefined,
-      unit: undefined,
+      unit: response?.unit ?? undefined,
       price: listing?.price != null ? listing.price.toFixed(2) : undefined,
       responsePrice: response?.price != null ? response.price.toFixed(2) : undefined,
       responseQty: response?.qty != null ? String(response.qty) : undefined,
@@ -310,8 +311,8 @@ export default function ChatThread() {
                 {response.message}
               </p>
               <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1 text-sm text-earth-500">
-                <span>${response.price.toFixed(2)}</span>
-                <span>Qty: {response.qty}</span>
+                <span>${response.price.toFixed(2)} / {response.unit ?? "kg"}</span>
+                <span>Qty: {response.qty} {response.unit ?? "kg"}</span>
               </div>
               <p className="text-xs text-earth-400 mt-1">
                 by {response.createdBy?.name || "Unknown"} ·{" "}
