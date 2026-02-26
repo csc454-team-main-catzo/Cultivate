@@ -4,6 +4,8 @@ import { useAuth0 } from "@auth0/auth0-react";
 import { useApi } from "../providers/apiContext";
 import { useUser } from "../providers/userContext";
 import CFG from "../config";
+import GhostTextarea from "../components/GhostTextarea";
+import { getChatSuggestion, type ChatSuggestionContext } from "../utils/suggestions";
 
 interface ChatParticipant {
   _id: string;
@@ -85,6 +87,21 @@ export default function ChatThread() {
     if (!thread || !user) return null;
     return thread.participants.find((p) => p._id !== user._id) || null;
   }, [thread, user]);
+
+  const getSuggestionFn = useMemo(() => {
+    const ctx: ChatSuggestionContext = {
+      listingTitle: listing?.title,
+      itemName: listing?.item,
+      qty: listing?.qty != null ? String(listing.qty) : undefined,
+      unit: undefined,
+      price: listing?.price != null ? listing.price.toFixed(2) : undefined,
+      responsePrice: response?.price != null ? response.price.toFixed(2) : undefined,
+      responseQty: response?.qty != null ? String(response.qty) : undefined,
+      isNewThread: thread ? thread.messages.length === 0 : false,
+      isResponder: !!(user && response && user._id === response.createdBy._id),
+    };
+    return (text: string) => getChatSuggestion(text, ctx);
+  }, [listing, response, thread?.messages.length, user]);
 
   useEffect(() => {
     if (!threadId) return;
@@ -360,18 +377,22 @@ export default function ChatThread() {
             <p className="text-red-600 text-xs mb-2">{sendError}</p>
           )}
           <div className="flex items-end gap-2">
-            <textarea
-              value={messageText}
-              onChange={(e) => setMessageText(e.target.value)}
-              placeholder="Type a message..."
-              rows={2}
-              className="input-field resize-none min-h-[44px] max-h-[72px] flex-1"
-              maxLength={2000}
-            />
+            <div className="flex-1 min-w-0">
+              <GhostTextarea
+                value={messageText}
+                onChange={setMessageText}
+                getSuggestion={getSuggestionFn}
+                placeholder="Type a message..."
+                rows={2}
+                className="min-h-[44px]! max-h-[72px]"
+                debounceMs={150}
+                maxLength={2000}
+              />
+            </div>
             <button
               type="submit"
               disabled={sending || !messageText.trim()}
-              className="btn-primary px-4 py-2"
+              className="btn-primary px-4 py-2 self-end"
             >
               {sending ? "Sending..." : "Send"}
             </button>
