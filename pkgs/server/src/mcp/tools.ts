@@ -197,7 +197,7 @@ export async function create_audit_log(params: CreateAuditLogParams): Promise<vo
 export async function auto_confirm_order(params: {
   orderId: string;
   supplierId: string;
-  riskTier: string;
+  riskTier: "LOW" | "MEDIUM" | "HIGH";
   order: OrderForBrief;
   date: string;
 }): Promise<void> {
