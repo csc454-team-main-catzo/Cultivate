@@ -40,6 +40,9 @@ export default function Layout() {
                   <Link to="/quality-gate" className={navLinkClass("/quality-gate")}>
                     Receiving
                   </Link>
+                  <Link to="/settings/integrations" className={navLinkClass("/settings/integrations")}>
+                    Settings
+                  </Link>
                 </div>
               )}
             </div>

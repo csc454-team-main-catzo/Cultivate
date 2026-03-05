@@ -11,6 +11,7 @@ import EditListing from "./pages/EditListing"
 import ChatThread from "./pages/ChatThread"
 import Messages from "./pages/Messages"
 import QualityGate from "./pages/QualityGate"
+import Integrations from "./pages/Settings/Integrations"
 
 function App() {
   return (
@@ -28,6 +29,7 @@ function App() {
           <Route path="messages" element={<Messages />} />
           <Route path="chat/:id" element={<ChatThread />} />
           <Route path="quality-gate" element={<QualityGate />} />
+          <Route path="settings/integrations" element={<Integrations />} />
         </Route>
       </Route>
     </Routes>

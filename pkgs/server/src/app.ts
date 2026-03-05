@@ -11,6 +11,7 @@ import userRoutes from './routes/users.js'
 import chatRoutes from './routes/chats.js'
 import qualityGateRoutes from './routes/qualityGate.js'
 import ordersRoutes from './routes/orders.js'
+import integrationsGoogleRoutes from './routes/integrationsGoogle.js'
 
 type AppBindings = {
   Variables: any
@@ -83,6 +84,7 @@ app.route('/api', produceItemRoutes)
 app.route('/api/chat', chatRoutes)
 app.route('/', qualityGateRoutes)
 app.route('/', ordersRoutes)
+app.route('/api', integrationsGoogleRoutes)
 
 app.get(
   '/openapi.json',

@@ -119,15 +119,23 @@ export interface CreateDailyOrderBody {
 
 export type EmailSkippedReason = "no_recipient" | "no_brief" | "no_api_key" | "send_failed";
 
-export async function createDailyOrder(body: CreateDailyOrderBody): Promise<{
+export async function createDailyOrder(
+  body: CreateDailyOrderBody,
+  accessToken?: string | null
+): Promise<{
   _id: string;
   status: string;
   emailSent?: boolean;
   emailSkippedReason?: EmailSkippedReason;
+  calendarEventCreated?: boolean;
+  calendarEventUpdated?: boolean;
 }> {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (accessToken) headers["Authorization"] = `Bearer ${accessToken}`;
+
   const res = await fetch(`${API_URL}/orders`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers,
     body: JSON.stringify(body),
   });
   const data = (await res.json().catch(() => ({}))) as {
@@ -136,6 +144,8 @@ export async function createDailyOrder(body: CreateDailyOrderBody): Promise<{
     error?: string;
     emailSent?: boolean;
     emailSkippedReason?: EmailSkippedReason;
+    calendarEventCreated?: boolean;
+    calendarEventUpdated?: boolean;
   };
   if (!res.ok) throw new Error(data.error ?? "Create order failed");
   return {
@@ -143,5 +153,7 @@ export async function createDailyOrder(body: CreateDailyOrderBody): Promise<{
     status: data.status ?? "placed",
     emailSent: data.emailSent,
     emailSkippedReason: data.emailSkippedReason,
+    calendarEventCreated: data.calendarEventCreated,
+    calendarEventUpdated: data.calendarEventUpdated,
   };
 }

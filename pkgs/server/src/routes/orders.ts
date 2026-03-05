@@ -1,11 +1,15 @@
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
+import { fromZonedTime } from "date-fns-tz";
+import { authMiddleware } from "../middleware/auth.js";
 import Order from "../models/Order.js";
 import ReceivingBrief from "../models/ReceivingBrief.js";
 import { list_suppliers_with_trust } from "../mcp/tools.js";
 import { runQualityGate } from "../agents/qualityGate/graph.js";
 import { sendBriefEmail } from "../lib/email.js";
+import { createDeliveryEventForOrder } from "../integrations/googleCalendar/deliveryEvent.js";
+import CFG from "../config.js";
 
 const orderLineItemSchema = z.object({
   itemCanonical: z.string().min(1).trim(),
@@ -27,11 +31,16 @@ const createOrderBodySchema = z.object({
   recipientEmail: z.union([z.string().email(), z.literal("")]).optional(),
 });
 
-function toISOTime(datePart: string, timeStr: string): string {
+/**
+ * Parse "HH:mm" as local time in DEFAULT_DELIVERY_TIMEZONE on the given date, return UTC Date.
+ */
+function parseLocalTimeToUTC(datePart: string, timeStr: string): Date {
+  const [y, mo, d] = datePart.split("-").map(Number);
   const [h, m] = timeStr.trim().split(":");
-  const hour = (h ?? "0").padStart(2, "0");
-  const min = (m ?? "0").padStart(2, "0");
-  return `${datePart}T${hour}:${min}:00.000Z`;
+  const hour = Math.min(23, Math.max(0, parseInt(h ?? "0", 10)));
+  const min = Math.min(59, Math.max(0, parseInt(m ?? "0", 10)));
+  const localDate = new Date(y, mo - 1, d, hour, min, 0, 0);
+  return fromZonedTime(localDate, CFG.DEFAULT_DELIVERY_TIMEZONE);
 }
 
 function parseWindow(
@@ -40,10 +49,15 @@ function parseWindow(
   end: string
 ): { deliveryWindowStart: Date; deliveryWindowEnd: Date } {
   const datePart = orderDate.slice(0, 10);
-  const startStr = start.length <= 8 && start.includes(":") ? toISOTime(datePart, start) : start;
-  const endStr = end.length <= 8 && end.includes(":") ? toISOTime(datePart, end) : end;
-  const deliveryWindowStart = new Date(startStr);
-  const deliveryWindowEnd = new Date(endStr);
+  let deliveryWindowStart: Date;
+  let deliveryWindowEnd: Date;
+  if (start.length <= 8 && start.includes(":") && end.length <= 8 && end.includes(":")) {
+    deliveryWindowStart = parseLocalTimeToUTC(datePart, start);
+    deliveryWindowEnd = parseLocalTimeToUTC(datePart, end);
+  } else {
+    deliveryWindowStart = new Date(start);
+    deliveryWindowEnd = new Date(end);
+  }
   if (isNaN(deliveryWindowStart.getTime()) || isNaN(deliveryWindowEnd.getTime())) {
     throw new Error("Invalid delivery window");
   }
@@ -54,6 +68,7 @@ const ordersRoutes = new Hono();
 
 ordersRoutes.post(
   "/orders",
+  authMiddleware({ optional: true }),
   zValidator("json", createOrderBodySchema, (result, c) => {
     if (!result.success) {
       return c.json({ error: "Invalid body", details: result.error.flatten() }, 400);
@@ -148,6 +163,22 @@ ordersRoutes.post(
       }
     }
 
+    let calendarEventCreated = false;
+    let calendarEventUpdated = false;
+    const userId = c.get("userId") as string | undefined;
+    if (userId) {
+      try {
+        const calendarResult = await createDeliveryEventForOrder({
+          userId: userId as any,
+          orderId: doc._id,
+        });
+        calendarEventCreated = calendarResult.created;
+        calendarEventUpdated = calendarResult.updated;
+      } catch (e) {
+        console.error("[orders] Google Calendar event creation failed:", (e as Error).message);
+      }
+    }
+
     return c.json(
       {
         _id: String(doc._id),
@@ -159,6 +190,8 @@ ordersRoutes.post(
         deliveryWindowEnd: doc.deliveryWindowEnd.toISOString(),
         status: doc.status,
         emailSent,
+        ...(calendarEventCreated && { calendarEventCreated: true }),
+        ...(calendarEventUpdated && { calendarEventUpdated: true }),
         ...(emailSkippedReason && { emailSkippedReason }),
       },
       201

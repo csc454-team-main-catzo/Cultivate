@@ -26,7 +26,7 @@ function riskBadgeClass(tier: string) {
 }
 
 export default function QualityGate() {
-  const { user: auth0User } = useAuth0();
+  const { user: auth0User, getAccessTokenSilently } = useAuth0();
   const { user, isLoading: userLoading } = useUser();
   const recipientEmail =
     (user as { email?: string | null } | undefined)?.email?.trim() ||
@@ -126,7 +126,8 @@ export default function QualityGate() {
         })),
         ...(recipientEmail && { recipientEmail }),
       };
-      const result = await createDailyOrder(body);
+      const token = await getAccessTokenSilently().catch(() => null);
+      const result = await createDailyOrder(body, token ?? undefined);
       const reasonMsg =
         result.emailSkippedReason === "no_api_key"
           ? " Email not sent: RESEND_API_KEY is not set on the server."
@@ -137,10 +138,14 @@ export default function QualityGate() {
               : result.emailSkippedReason === "send_failed"
                 ? " Email not sent: server could not send (check server logs)."
                 : "";
+      const calendarMsg =
+        result.calendarEventCreated || result.calendarEventUpdated
+          ? " A delivery event was added to your Google Calendar."
+          : "";
       setOrderSuccess(
         result.emailSent
-          ? "Order created. We've emailed your receiving brief to your account email."
-          : `Order created. The system assigned the best available supplier. Get your brief above.${reasonMsg}`
+          ? `Order created. We've emailed your receiving brief to your account email.${calendarMsg}`
+          : `Order created. The system assigned the best available supplier. Get your brief above.${calendarMsg}${reasonMsg}`
       );
       setDate(orderDate);
     } catch (e) {

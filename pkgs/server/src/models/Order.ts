@@ -20,6 +20,9 @@ export interface IOrder extends Document {
   deliveryWindowStart: Date;
   deliveryWindowEnd: Date;
   status: "draft" | "placed" | "confirmed" | "delivered" | "cancelled";
+  /** Set when a delivery event is created in Google Calendar. */
+  googleCalendarEventId?: string;
+  googleCalendarId?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -54,6 +57,8 @@ const OrderSchema = new Schema<IOrder>(
       enum: ["draft", "placed", "confirmed", "delivered", "cancelled"],
       default: "placed",
     },
+    googleCalendarEventId: { type: String },
+    googleCalendarId: { type: String },
   },
   { timestamps: true }
 );
