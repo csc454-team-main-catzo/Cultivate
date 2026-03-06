@@ -291,7 +291,7 @@ export default function ListingDetail() {
 
   if (error || !listing) {
     return (
-      <div className="max-w-2xl mx-auto px-4 py-8">
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 md:px-8 py-8">
         <p className="text-earth-600 mb-4">{error || "Listing not found."}</p>
         <Link to="/listings" className="text-leaf-600 font-medium hover:text-leaf-700">
           ← Back to listings
@@ -309,7 +309,7 @@ export default function ListingDetail() {
     : null;
 
   return (
-    <div className="max-w-2xl mx-auto px-4 sm:px-6 py-8">
+    <div className="max-w-4xl mx-auto px-4 sm:px-6 md:px-8 py-8">
       <Link
         to="/listings"
         className="inline-flex items-center gap-1 text-earth-600 text-sm font-medium hover:text-leaf-600 mb-6"
@@ -327,10 +327,10 @@ export default function ListingDetail() {
         )}
         <div className="flex flex-wrap items-center gap-2 mb-2">
           <span
-            className={`inline-block text-xs font-semibold px-2.5 py-1 rounded-full ${
+            className={`inline-block text-xs font-medium px-3 py-1 rounded-full ${
               listing.createdBy?.role === "restaurant"
-                ? "bg-harvest-100 text-harvest-800"
-                : "bg-leaf-100 text-leaf-800"
+                ? "bg-blue-100 text-blue-800"
+                : "bg-[#E0F2EB] text-[#00674F]"
             }`}
           >
             {listing.createdBy?.role === "restaurant"
@@ -343,7 +343,7 @@ export default function ListingDetail() {
           </span>
           <span className="text-xs text-earth-500 capitalize">{listing.status}</span>
         </div>
-        <h1 className="font-display text-xl sm:text-2xl text-earth-900 mb-2">
+        <h1 className="text-2xl font-semibold text-zinc-900 mb-2">
           {listing.title}
         </h1>
         <p className="text-earth-600 text-sm mb-3">{listing.description}</p>

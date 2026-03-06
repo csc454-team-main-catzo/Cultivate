@@ -42,11 +42,9 @@ export default function Listings() {
   }, [filter, listingsApi]);
 
   return (
-    <div className="max-w-3xl mx-auto px-4 sm:px-6 py-8 sm:py-10">
+    <div className="max-w-4xl mx-auto px-4 sm:px-6 md:px-8 py-8">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
-        <h1 className="font-display text-2xl sm:text-3xl text-earth-900">
-          Listings
-        </h1>
+        <h1 className="text-2xl font-semibold text-zinc-900">Listings</h1>
         <Link to="/listings/new" className="btn-primary shrink-0">
           + New Listing
         </Link>
@@ -94,10 +92,10 @@ export default function Listings() {
                 <div className="flex flex-wrap items-start justify-between gap-2">
                   <div className="flex flex-wrap items-center gap-2">
                     <span
-                      className={`inline-block text-xs font-semibold px-2.5 py-1 rounded-full ${
+                      className={`inline-block text-xs font-medium px-3 py-1 rounded-full ${
                         l.createdBy?.role === "restaurant"
-                          ? "bg-harvest-100 text-harvest-800"
-                          : "bg-leaf-100 text-leaf-800"
+                          ? "bg-blue-100 text-blue-800"
+                          : "bg-[#E0F2EB] text-[#00674F]"
                       }`}
                     >
                       {l.createdBy?.role === "restaurant"
@@ -106,7 +104,7 @@ export default function Listings() {
                           ? "Farmer"
                           : l.type === "demand"
                             ? "Restaurant"
-                            : "Farme"}
+                            : "Farmer"}
                     </span>
                     <span className="font-semibold text-earth-900">{l.title}</span>
                     {Array.isArray(l.responses) && l.responses.length > 0 && (
