@@ -4,26 +4,43 @@
  * Chat UX pattern aligned with 21st.dev Chat App template: https://21st.dev/agents/docs/templates/chat-app
  */
 
-import OpenAI from "openai";
+// Use namespace-safe import for Vercel/isolatedModules: avoid "OpenAI" as type and ensure constructable
+import OpenAIModule from "openai";
 import Listing from "../models/Listing.js";
 import { getProduceMatchTerms } from "./produceMatcher.js";
 
+/** Minimal type for OpenAI-compatible chat client (avoids using package namespace as type). */
+interface LLMClient {
+  chat: {
+    completions: {
+      create(params: {
+        model: string;
+        messages: Array<{ role: string; content: string }>;
+        response_format?: { type: string };
+        max_tokens?: number;
+      }): Promise<{ choices: Array<{ message?: { content?: string | null } }> }>;
+    };
+  };
+}
+
 /** OpenAI-compatible client: Groq (free), OpenRouter (free models), or OpenAI. Prefer free providers when keys are set. */
-function getLLMClient(): OpenAI | null {
+function getLLMClient(): LLMClient | null {
+  const Ctor = (OpenAIModule as { default?: unknown }).default ?? OpenAIModule;
+  const NewCtor = Ctor as unknown as new (opts: { apiKey: string; baseURL?: string }) => LLMClient;
   if (process.env.GROQ_API_KEY) {
-    return new OpenAI({
+    return new NewCtor({
       apiKey: process.env.GROQ_API_KEY,
       baseURL: "https://api.groq.com/openai/v1",
     });
   }
   if (process.env.OPENROUTER_API_KEY) {
-    return new OpenAI({
+    return new NewCtor({
       apiKey: process.env.OPENROUTER_API_KEY,
       baseURL: "https://openrouter.ai/api/v1",
     });
   }
   if (process.env.OPENAI_API_KEY) {
-    return new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    return new NewCtor({ apiKey: process.env.OPENAI_API_KEY });
   }
   return null;
 }
