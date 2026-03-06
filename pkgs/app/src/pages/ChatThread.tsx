@@ -341,7 +341,7 @@ export default function ChatThread() {
                   >
                     <div
                       className={`flex items-end gap-2 max-w-[85%] ${
-                        isMe ? "flex-row-reverse" : ""
+                        isMe ? "" : "flex-row-reverse"
                       }`}
                     >
                       <div
