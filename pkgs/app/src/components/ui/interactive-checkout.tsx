@@ -23,6 +23,7 @@ interface InteractiveCheckoutProps {
   products?: Product[];
   cart?: CartItem[];
   onCartChange?: (cart: CartItem[]) => void;
+  onCheckout?: (params: { cart: CartItem[]; total: number }) => void;
 }
 
 const defaultProducts: Product[] = [
@@ -59,6 +60,7 @@ function InteractiveCheckout({
   products = defaultProducts,
   cart: controlledCart,
   onCartChange,
+  onCheckout,
 }: InteractiveCheckoutProps) {
   const [internalCart, setInternalCart] = useState<CartItem[]>([]);
   const cart = controlledCart ?? internalCart;
@@ -117,6 +119,10 @@ function InteractiveCheckout({
   const handleMockCheckout = () => {
     if (totalItems === 0) {
       window.alert("Your cart is empty. Add some items before checking out.");
+      return;
+    }
+    if (onCheckout) {
+      onCheckout({ cart, total: totalPrice });
       return;
     }
     window.alert(

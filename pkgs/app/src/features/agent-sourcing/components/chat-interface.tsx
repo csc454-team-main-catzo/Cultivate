@@ -19,6 +19,8 @@ import {
 import { useAuth0 } from "@auth0/auth0-react";
 import CFG from "@/config";
 import { InteractiveCheckout, type CartItem, type Product as CheckoutProduct } from "@/components/ui/interactive-checkout";
+import { CheckoutForm } from "@/components/ui/checkout-form";
+import { OrderConfirmationCard } from "@/components/ui/order-confirmation-card";
 import { cn } from "@/lib/utils";
 
 interface ChatInterfaceProps {
@@ -44,6 +46,9 @@ export function ChatInterface({
   const cartLoadedForChatIdRef = useRef<string | null>(null);
   const lastSavedCartRef = useRef<string>("[]");
   const saveTimerRef = useRef<number | null>(null);
+  const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
+  const [showConfirmation, setShowConfirmation] = useState(false);
+  const [checkoutTotal, setCheckoutTotal] = useState<number | null>(null);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
@@ -178,6 +183,12 @@ export function ChatInterface({
                   onPostInventory={onPostInventory}
                   cart={cart}
                   onCartChange={setCart}
+                  onCheckout={({ cart: checkoutCart, total }) => {
+                    if (!checkoutCart.length) return;
+                    setCheckoutTotal(total);
+                    setIsCheckoutOpen(true);
+                    setShowConfirmation(false);
+                  }}
                 />
               ))}
 
@@ -227,6 +238,64 @@ export function ChatInterface({
           }
         />
       </div>
+
+      {/* Mock checkout overlay */}
+      {isCheckoutOpen && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-zinc-950/70 backdrop-blur-sm">
+          <button
+            type="button"
+            aria-label="Close checkout"
+            className="absolute inset-0 w-full h-full cursor-default"
+            onClick={() => {
+              setShowConfirmation(false);
+              setIsCheckoutOpen(false);
+              setCheckoutTotal(null);
+            }}
+          />
+          <div className="relative z-10 w-full max-w-md px-4">
+            {!showConfirmation ? (
+              <div className="rounded-2xl bg-white shadow-2xl border border-zinc-200 p-4 sm:p-5">
+                <CheckoutForm
+                  totalAmount={
+                    checkoutTotal ?? cart.reduce((sum, item) => sum + item.price * item.quantity, 0)
+                  }
+                  items={cart.map((item) => ({
+                    id: item.id,
+                    name: item.name,
+                    quantity: item.quantity,
+                    price: item.price,
+                  }))}
+                  onCancel={() => {
+                    setIsCheckoutOpen(false);
+                    setShowConfirmation(false);
+                    setCheckoutTotal(null);
+                  }}
+                  onPlaceOrder={() => {
+                    setShowConfirmation(true);
+                    // Clear cart after a mock order is placed
+                    setCart([]);
+                  }}
+                />
+              </div>
+            ) : (
+              <OrderConfirmationCard
+                orderId="MOCK-57625869"
+                paymentMethod="Mock payment"
+                dateTime={new Date().toLocaleString()}
+                totalAmount={`$${(
+                  checkoutTotal ?? cart.reduce((sum, item) => sum + item.price * item.quantity, 0)
+                ).toFixed(2)}`}
+                title="Your mock order has been placed"
+                buttonText="Back to Glean"
+                onClose={() => {
+                  setShowConfirmation(false);
+                  setIsCheckoutOpen(false);
+                }}
+              />
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -238,6 +307,7 @@ interface MessageBubbleProps {
   onPostInventory?: (draft: InventoryDraftData) => void;
   cart: CartItem[];
   onCartChange: (cart: CartItem[]) => void;
+  onCheckout: (params: { cart: CartItem[]; total: number }) => void;
 }
 
 function MessageBubble({
@@ -247,6 +317,7 @@ function MessageBubble({
   onPostInventory,
   cart,
   onCartChange,
+  onCheckout,
 }: MessageBubbleProps) {
   const isUser = message.role === "user";
 
@@ -299,6 +370,7 @@ function MessageBubble({
               }))}
               cart={cart}
               onCartChange={onCartChange}
+              onCheckout={onCheckout}
             />
           </div>
         )}
