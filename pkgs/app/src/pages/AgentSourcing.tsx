@@ -1,14 +1,12 @@
-import { useNavigate } from "react-router-dom";
 import { useUser } from "../providers/userContext";
 import { useListingActions } from "../hooks/useListingActions";
 import { ChatInterface } from "../features/agent-sourcing/components/chat-interface";
 import { getUserRole } from "../lib/auth";
-import type { InventoryDraftData, ProductGridItem } from "../features/agent-sourcing/types";
+import type { InventoryDraftData } from "../features/agent-sourcing/types";
 
 export default function AgentSourcing() {
   const { user } = useUser();
   const { createListing } = useListingActions();
-  const navigate = useNavigate();
   const role = getUserRole(user ?? null) ?? "farmer";
 
   async function handlePostInventory(draft: InventoryDraftData) {
@@ -23,21 +21,10 @@ export default function AgentSourcing() {
         unit: draft.unit ?? "kg",
         latLng: [0, 0] as [number, number],
       };
-      const created = await createListing(body);
-      const id = (created as { _id?: string })._id;
-      if (id) navigate(`/listings/${id}`);
-      else navigate("/listings");
+      await createListing(body);
     } catch (err) {
       console.error("Failed to post listing:", err);
     }
-  }
-
-  function handleAddToOrder(item: ProductGridItem) {
-    navigate(`/listings/${item.listingId}`);
-  }
-
-  function handleNegotiate(item: ProductGridItem) {
-    navigate(`/listings/${item.listingId}`);
   }
 
   return (
@@ -50,8 +37,6 @@ export default function AgentSourcing() {
         <ChatInterface
           role={role}
           onPostInventory={handlePostInventory}
-          onAddToOrder={handleAddToOrder}
-          onNegotiate={handleNegotiate}
         />
       </div>
     </div>

@@ -6,7 +6,6 @@ import { getAgentTheme } from "../lib/theme";
 import type {
   AgentMessage,
   InventoryDraftData,
-  ProductGridItem,
   UserRole,
 } from "../types";
 import { InventoryDraftCard } from "./InventoryDraftCard";
@@ -23,15 +22,11 @@ import { cn } from "@/lib/utils";
 interface ChatInterfaceProps {
   role: UserRole | undefined;
   onPostInventory?: (draft: InventoryDraftData) => void;
-  onAddToOrder?: (item: ProductGridItem) => void;
-  onNegotiate?: (item: ProductGridItem) => void;
 }
 
 export function ChatInterface({
   role = "farmer",
   onPostInventory,
-  onAddToOrder,
-  onNegotiate,
 }: ChatInterfaceProps) {
   const { messages, isThinking, sendMessage, cancelThinking } = useAgent({ role });
   const theme = getAgentTheme(role);
@@ -92,8 +87,6 @@ export function ChatInterface({
               theme={theme}
               AgentIcon={AgentIcon}
               onPostInventory={onPostInventory}
-              onAddToOrder={onAddToOrder}
-              onNegotiate={onNegotiate}
             />
           ))}
 
@@ -150,8 +143,6 @@ interface MessageBubbleProps {
   theme: ReturnType<typeof getAgentTheme>;
   AgentIcon: typeof Bot;
   onPostInventory?: (draft: InventoryDraftData) => void;
-  onAddToOrder?: (item: ProductGridItem) => void;
-  onNegotiate?: (item: ProductGridItem) => void;
 }
 
 function MessageBubble({
@@ -159,8 +150,6 @@ function MessageBubble({
   theme,
   AgentIcon,
   onPostInventory,
-  onAddToOrder,
-  onNegotiate,
 }: MessageBubbleProps) {
   const isUser = message.role === "user";
 

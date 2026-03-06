@@ -302,5 +302,4 @@ function InteractiveCheckout({
 }
 
 export { InteractiveCheckout };
-export type { Product };
 
