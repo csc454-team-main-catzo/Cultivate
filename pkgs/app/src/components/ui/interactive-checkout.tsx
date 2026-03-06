@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { CreditCard, Minus, Plus, ShoppingCart, X } from "lucide-react";
 import NumberFlow from "@number-flow/react";
@@ -15,12 +15,14 @@ export interface Product {
   color: string;
 }
 
-interface CartItem extends Product {
+export interface CartItem extends Product {
   quantity: number;
 }
 
 interface InteractiveCheckoutProps {
   products?: Product[];
+  cart?: CartItem[];
+  onCartChange?: (cart: CartItem[]) => void;
 }
 
 const defaultProducts: Product[] = [
@@ -55,8 +57,21 @@ const defaultProducts: Product[] = [
 
 function InteractiveCheckout({
   products = defaultProducts,
+  cart: controlledCart,
+  onCartChange,
 }: InteractiveCheckoutProps) {
-  const [cart, setCart] = useState<CartItem[]>([]);
+  const [internalCart, setInternalCart] = useState<CartItem[]>([]);
+  const cart = controlledCart ?? internalCart;
+
+  const setCart = useCallback(
+    (next: CartItem[] | ((current: CartItem[]) => CartItem[])) => {
+      const computed =
+        typeof next === "function" ? (next as (c: CartItem[]) => CartItem[])(cart) : next;
+      if (onCartChange) onCartChange(computed);
+      else setInternalCart(computed);
+    },
+    [cart, onCartChange]
+  );
 
   const addToCart = (product: Product) => {
     setCart((currentCart) => {
@@ -90,10 +105,13 @@ function InteractiveCheckout({
     );
   };
 
-  const totalItems = cart.reduce((sum, item) => sum + item.quantity, 0);
-  const totalPrice = cart.reduce(
-    (sum, item) => sum + item.price * item.quantity,
-    0,
+  const totalItems = useMemo(
+    () => cart.reduce((sum, item) => sum + item.quantity, 0),
+    [cart]
+  );
+  const totalPrice = useMemo(
+    () => cart.reduce((sum, item) => sum + item.price * item.quantity, 0),
+    [cart]
   );
 
   const handleMockCheckout = () => {
