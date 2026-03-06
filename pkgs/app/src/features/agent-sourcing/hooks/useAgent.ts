@@ -1,4 +1,6 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { useAuth0 } from "@auth0/auth0-react";
+import CFG from "@/config";
 import type {
   AgentMessage,
   InventoryDraftData,
@@ -125,6 +127,7 @@ function streamText(
 
 export interface UseAgentOptions {
   role: UserRole;
+  chatId: string | null;
 }
 
 export interface UseAgentReturn {
@@ -136,10 +139,101 @@ export interface UseAgentReturn {
 }
 
 export function useAgent(options: UseAgentOptions): UseAgentReturn {
-  const { role } = options;
+  const { role, chatId } = options;
+  const { isAuthenticated, getAccessTokenSilently } = useAuth0();
   const [messages, setMessages] = useState<AgentMessage[]>([]);
   const [isThinking, setIsThinking] = useState(false);
   const streamCancelRef = { current: () => {} };
+
+  const getAuthHeaders = useCallback(async () => {
+    if (!isAuthenticated) return null;
+    const token = await getAccessTokenSilently({
+      authorizationParams: { audience: CFG.AUTH0_AUDIENCE },
+    });
+    return { Authorization: `Bearer ${token}` };
+  }, [getAccessTokenSilently, isAuthenticated]);
+
+  // Load persisted messages when switching chats.
+  useEffect(() => {
+    let isCancelled = false;
+
+    async function loadChat() {
+      if (!chatId || !isAuthenticated) {
+        setMessages([]);
+        return;
+      }
+      try {
+        const headers = await getAuthHeaders();
+        if (!headers) return;
+        const res = await fetch(`${CFG.API_URL}/api/glean/chats/${chatId}`, {
+          headers,
+        });
+        if (!res.ok) throw new Error(`Failed to load chat (${res.status})`);
+        const data = (await res.json()) as any;
+        const serverMessages = Array.isArray(data?.messages) ? data.messages : [];
+        const mapped = serverMessages
+          .map((m: any): AgentMessage | null => {
+            const base = {
+              id: String(m._id ?? generateId()),
+              role: m.role as "user" | "assistant",
+              type: m.type as "text" | "product_grid" | "inventory_form",
+              createdAt: m.createdAt ? new Date(m.createdAt) : new Date(),
+            };
+            if (base.type === "text") {
+              return {
+                ...base,
+                content: String(m.content ?? ""),
+                isStreaming: false,
+              } as TextMessage;
+            }
+            if (base.type === "product_grid") {
+              return {
+                ...base,
+                query: "",
+                items: Array.isArray(m.items) ? (m.items as ProductGridItem[]) : [],
+              } as AgentMessage;
+            }
+            return {
+              ...base,
+              draft: m.draft as InventoryDraftData,
+            } as AgentMessage;
+          })
+          .filter(Boolean) as AgentMessage[];
+        if (!isCancelled) setMessages(mapped);
+      } catch (err) {
+        console.error("Failed to load Glean chat messages:", err);
+      }
+    }
+
+    void loadChat();
+    return () => {
+      isCancelled = true;
+    };
+  }, [chatId, getAuthHeaders, isAuthenticated]);
+
+  const persistMessage = useCallback(
+    async (payload: {
+      role: "user" | "assistant";
+      type: "text" | "product_grid" | "inventory_form";
+      content?: string;
+      items?: ProductGridItem[];
+      draft?: InventoryDraftData;
+    }) => {
+      if (!chatId || !isAuthenticated) return;
+      try {
+        const headers = await getAuthHeaders();
+        if (!headers) return;
+        await fetch(`${CFG.API_URL}/api/glean/chats/${chatId}/messages`, {
+          method: "POST",
+          headers: { ...headers, "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+      } catch (err) {
+        console.error("Failed to persist Glean message:", err);
+      }
+    },
+    [chatId, getAuthHeaders, isAuthenticated]
+  );
 
   const sendMessage = useCallback(
     (text: string) => {
@@ -154,6 +248,7 @@ export function useAgent(options: UseAgentOptions): UseAgentReturn {
         createdAt: new Date(),
       };
       setMessages((prev) => [...prev, userMsg]);
+      void persistMessage({ role: "user", type: "text", content: trimmed });
       setIsThinking(true);
 
       const timeoutId = window.setTimeout(() => {
@@ -197,6 +292,11 @@ export function useAgent(options: UseAgentOptions): UseAgentReturn {
                 m.id === introId ? { ...m, isStreaming: false } : m
               )
             );
+            void persistMessage({
+              role: "assistant",
+              type: "text",
+              content: introText,
+            });
             const cardMsg: AgentMessage = {
               ...payload,
               id: generateId(),
@@ -204,6 +304,19 @@ export function useAgent(options: UseAgentOptions): UseAgentReturn {
               createdAt: new Date(),
             } as AgentMessage;
             setMessages((prev) => [...prev, cardMsg]);
+            if (cardMsg.type === "product_grid") {
+              void persistMessage({
+                role: "assistant",
+                type: "product_grid",
+                items: (cardMsg as any).items as ProductGridItem[],
+              });
+            } else if (cardMsg.type === "inventory_form") {
+              void persistMessage({
+                role: "assistant",
+                type: "inventory_form",
+                draft: (cardMsg as any).draft as InventoryDraftData,
+              });
+            }
           }
         );
       }, THINKING_DELAY_MS);
@@ -213,7 +326,7 @@ export function useAgent(options: UseAgentOptions): UseAgentReturn {
         streamCancelRef.current();
       };
     },
-    [role]
+    [persistMessage, role]
   );
 
   const cancelThinking = useCallback(() => {
