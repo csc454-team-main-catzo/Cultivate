@@ -1,3 +1,7 @@
+/**
+ * Glean chat: send user message → backend agent API → stream intro + structured payload (product grid or draft form).
+ * Pattern inspired by the 21st.dev Chat App template: https://21st.dev/agents/docs/templates/chat-app
+ */
 import { useCallback, useEffect, useState } from "react";
 import { useAuth0 } from "@auth0/auth0-react";
 import CFG from "@/config";
@@ -11,7 +15,6 @@ import type {
   UserRole,
 } from "../types";
 
-const THINKING_DELAY_MS = 1200;
 const STREAM_CHUNK_MS = 35;
 
 function generateId(): string {
@@ -22,84 +25,57 @@ type AgentResponsePayload =
   | Omit<ProductGridMessage, "id" | "role" | "createdAt">
   | Omit<InventoryFormMessage, "id" | "role" | "createdAt">;
 
-/** Simulate parsing user text into draft (farmer) or query + mock matches (restaurant). */
-function simulateAgentResponse(
-  userText: string,
-  role: UserRole
-): AgentResponsePayload {
-  const lower = userText.toLowerCase();
+/** Backend Glean Agent API response. */
+interface GleanAgentResponse {
+  introText: string;
+  payload: {
+    type: "product_grid";
+    query: string;
+    items: Array<ProductGridItem & { imageId?: string }>;
+  } | {
+    type: "inventory_form";
+    draft: InventoryDraftData;
+    userMessage?: string;
+  } | null;
+}
 
+/** Fallback when agent API fails: simple regex-based draft or empty product grid. */
+function fallbackAgentResponse(userText: string, role: UserRole): AgentResponsePayload {
+  const lower = userText.toLowerCase();
   if (role === "farmer") {
-    // Extract numbers like "50kg", "50 kg", "50"
     const weightMatch = userText.match(/(\d+)\s*(kg|lb)?/i);
     const weight = weightMatch ? Number(weightMatch[1]) : 20;
     const unit = (weightMatch?.[2]?.toLowerCase() as "kg" | "lb") || "kg";
     const itemMatch = lower.match(/(carrots?|tomatoes?|potatoes?|onions?|lettuce|apples?|beets?|ugly|organic)/);
     const item = itemMatch ? (itemMatch[1] === "ugly" ? "carrots" : itemMatch[1]) : "produce";
     const title = `Fresh ${item} — ${weight}${unit}`;
-    const draft: InventoryDraftData = {
-      title,
-      item: item.replace(/s$/, ""), // singular
-      description: userText.slice(0, 200),
-      weightKg: unit === "lb" ? weight * 0.453592 : weight,
-      pricePerKg: 2.5,
-      unit: unit === "lb" ? "lb" : "kg",
-    };
     return {
       type: "inventory_form",
-      draft,
+      draft: {
+        title,
+        item: item.replace(/s$/, ""),
+        description: userText.slice(0, 200),
+        weightKg: unit === "lb" ? weight * 0.453592 : weight,
+        pricePerKg: 2.5,
+        unit: unit === "lb" ? "lb" : "kg",
+      },
       userMessage: userText,
     };
   }
+  return { type: "product_grid", query: userText, items: [] };
+}
 
-  // Restaurant: mock product grid from "need X by Friday" style
-  const qtyMatch = userText.match(/(\d+)\s*(kg|lb)?/i);
-  const qty = qtyMatch ? Number(qtyMatch[1]) : 20;
-  const unit = (qtyMatch?.[2]?.toLowerCase() as "kg" | "lb") || "kg";
-  const itemMatch = lower.match(/(carrots?|tomatoes?|potatoes?|onions?|lettuce|apples?|beets?)/);
-  const item = itemMatch ? itemMatch[1] : "carrots";
-  const items: ProductGridItem[] = [
-    {
-      id: "1",
-      listingId: "listing-1",
-      title: `Fresh ${item} — local farm`,
-      item,
-      description: "Harvested this week, great for soups and roasting.",
-      price: 2.8,
-      qty,
-      unit: unit as "kg" | "lb",
-      farmerName: "Green Valley Farm",
-      farmerId: "farmer-1",
-    },
-    {
-      id: "2",
-      listingId: "listing-2",
-      title: `Organic ${item}`,
-      item,
-      description: "Ugly but delicious, perfect for juice or stew.",
-      price: 2.2,
-      qty,
-      unit: unit as "kg" | "lb",
-      farmerName: "Sunrise Organics",
-      farmerId: "farmer-2",
-    },
-    {
-      id: "3",
-      listingId: "listing-3",
-      title: `Bulk ${item} — restaurant grade`,
-      item,
-      price: 2.5,
-      qty,
-      unit: unit as "kg" | "lb",
-      farmerName: "Hilltop Produce",
-      farmerId: "farmer-3",
-    },
-  ];
-  return {
-    type: "product_grid",
-    query: userText,
-    items,
-  };
+/** Map API payload to frontend payload; resolve imageId -> imageUrl. */
+function toPayload(res: GleanAgentResponse["payload"]): AgentResponsePayload | null {
+  if (!res) return null;
+  if (res.type === "product_grid") {
+    const items: ProductGridItem[] = (res.items ?? []).map((it) => ({
+      ...it,
+      imageUrl: it.imageId ? `${CFG.API_URL}/api/images/${it.imageId}` : it.imageUrl,
+    }));
+    return { type: "product_grid", query: res.query, items };
+  }
+  return { type: "inventory_form", draft: res.draft, userMessage: res.userMessage };
 }
 
 /** Simulated streaming: append characters one by one. */
@@ -251,14 +227,20 @@ export function useAgent(options: UseAgentOptions): UseAgentReturn {
       void persistMessage({ role: "user", type: "text", content: trimmed });
       setIsThinking(true);
 
-      const timeoutId = window.setTimeout(() => {
-        setIsThinking(false);
-        const payload = simulateAgentResponse(trimmed, role);
-        const introText =
-          role === "farmer"
-            ? "Here’s your draft. Confirm weight and price, then tap Post to list it."
-            : "Here are some matches from our network. Add to order or start a conversation.";
+      let cancelled = false;
+      const cleanup = () => {
+        cancelled = true;
+        streamCancelRef.current();
+      };
 
+      const defaultIntro =
+        role === "farmer"
+          ? "Here's your draft. Confirm weight and price, then tap Post to list it."
+          : "Here are some matches from our network. Add to order or start a conversation.";
+
+      const showResponse = (introText: string, payload: AgentResponsePayload | null) => {
+        if (cancelled) return;
+        setIsThinking(false);
         const introId = generateId();
         setMessages((prev) => [
           ...prev,
@@ -274,6 +256,7 @@ export function useAgent(options: UseAgentOptions): UseAgentReturn {
         streamCancelRef.current = streamText(
           introText,
           (soFar) => {
+            if (cancelled) return;
             setMessages((prev) =>
               prev.map((m) =>
                 m.id === introId
@@ -287,6 +270,7 @@ export function useAgent(options: UseAgentOptions): UseAgentReturn {
             );
           },
           () => {
+            if (cancelled) return;
             setMessages((prev) =>
               prev.map((m) =>
                 m.id === introId ? { ...m, isStreaming: false } : m
@@ -297,36 +281,59 @@ export function useAgent(options: UseAgentOptions): UseAgentReturn {
               type: "text",
               content: introText,
             });
-            const cardMsg: AgentMessage = {
-              ...payload,
-              id: generateId(),
-              role: "assistant",
-              createdAt: new Date(),
-            } as AgentMessage;
-            setMessages((prev) => [...prev, cardMsg]);
-            if (cardMsg.type === "product_grid") {
-              void persistMessage({
+            if (payload) {
+              const cardMsg: AgentMessage = {
+                ...payload,
+                id: generateId(),
                 role: "assistant",
-                type: "product_grid",
-                items: (cardMsg as any).items as ProductGridItem[],
-              });
-            } else if (cardMsg.type === "inventory_form") {
-              void persistMessage({
-                role: "assistant",
-                type: "inventory_form",
-                draft: (cardMsg as any).draft as InventoryDraftData,
-              });
+                createdAt: new Date(),
+              } as AgentMessage;
+              setMessages((prev) => [...prev, cardMsg]);
+              if (cardMsg.type === "product_grid") {
+                void persistMessage({
+                  role: "assistant",
+                  type: "product_grid",
+                  items: (cardMsg as ProductGridMessage).items,
+                });
+              } else if (cardMsg.type === "inventory_form") {
+                void persistMessage({
+                  role: "assistant",
+                  type: "inventory_form",
+                  draft: (cardMsg as InventoryFormMessage).draft,
+                });
+              }
             }
           }
         );
-      }, THINKING_DELAY_MS);
-
-      return () => {
-        window.clearTimeout(timeoutId);
-        streamCancelRef.current();
       };
+
+      const priorMessages = messages.slice(-10).map((m) => ({
+        role: m.role as "user" | "assistant",
+        content: m.type === "text" ? (m as TextMessage).content : undefined,
+        type: m.type,
+      }));
+
+      getAuthHeaders()
+        .then((headers) =>
+          fetch(`${CFG.API_URL}/api/glean/agent`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", ...(headers ?? {}) },
+            body: JSON.stringify({ prompt: trimmed, role, priorMessages }),
+          })
+        )
+        .then((res) => (res.ok ? res.json() : Promise.reject(new Error(res.statusText))))
+        .then((data: GleanAgentResponse) => {
+          const payload = toPayload(data.payload);
+          const intro = (data.introText && data.introText.trim()) || (payload ? defaultIntro : "") || defaultIntro;
+          showResponse(intro, payload);
+        })
+        .catch(() => {
+          showResponse(defaultIntro, fallbackAgentResponse(trimmed, role));
+        });
+
+      return cleanup;
     },
-    [persistMessage, role]
+    [messages, persistMessage, role, getAuthHeaders]
   );
 
   const cancelThinking = useCallback(() => {

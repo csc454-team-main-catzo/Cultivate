@@ -5,6 +5,7 @@ import { authMiddleware } from "../middleware/auth.js";
 import type { AuthenticatedContext } from "../middleware/types.js";
 import GleanChat from "../models/GleanChat.js";
 import GleanCart from "../models/GleanCart.js";
+import { runGleanAgent } from "../services/gleanAgent.js";
 
 const glean = new Hono<AuthenticatedContext>();
 
@@ -63,6 +64,27 @@ const CartBody = v.object({
       image: v.string(),
       color: v.string(),
       quantity: v.number(),
+    })
+  ),
+});
+
+const AgentBody = v.object({
+  prompt: v.pipe(v.string(), v.minLength(1, "prompt is required")),
+  role: v.picklist(["farmer", "restaurant"]),
+  priorMessages: v.optional(
+    v.array(
+      v.object({
+        role: v.picklist(["user", "assistant"]),
+        content: v.optional(v.string()),
+        type: v.optional(v.string()),
+      })
+    )
+  ),
+  inventoryConstraints: v.optional(
+    v.object({
+      maxPricePerKg: v.optional(v.number()),
+      preferredUnits: v.optional(v.array(v.picklist(["kg", "lb", "count", "bunch"]))),
+      maxWeightKg: v.optional(v.number()),
     })
   ),
 });
@@ -335,6 +357,41 @@ glean.put(
       },
       200
     );
+  }
+);
+
+/** POST /agent — Glean Agent: LLM + listing search, returns structured intro + payload. */
+glean.post(
+  "/agent",
+  describeRoute({
+    operationId: "gleanAgent",
+    summary: "Run Glean agent: forward prompt (and optional context) to LLM and listing search, return intro text + product suggestions or draft listing",
+    security: [{ bearerAuth: [] }, {}],
+    responses: {
+      200: { description: "Intro text and structured payload (product_grid or inventory_form)" },
+      400: { description: "Invalid request" },
+    },
+  }),
+  authMiddleware({ optional: true }),
+  async (c) => {
+    const raw = await readJson(c);
+    const parsed = v.safeParse(AgentBody, raw);
+    if (!parsed.success) {
+      return c.json({ error: "Invalid request body", details: parsed.issues }, 400);
+    }
+    const body = parsed.output;
+    try {
+      const result = await runGleanAgent({
+        prompt: body.prompt.trim(),
+        role: body.role,
+        priorMessages: body.priorMessages,
+        inventoryConstraints: body.inventoryConstraints,
+      });
+      return c.json(result, 200);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Unknown error";
+      return c.json({ error: message }, 500);
+    }
   }
 );
 
