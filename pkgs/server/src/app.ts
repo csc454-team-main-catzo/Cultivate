@@ -9,7 +9,7 @@ import listingRoutes from './routes/listings.js'
 import produceItemRoutes from './routes/produce-items.js'
 import userRoutes from './routes/users.js'
 import chatRoutes from './routes/chats.js'
-import agentRoutes from './routes/agent.js'
+import gleanRoutes from './routes/glean.js'
 
 type AppBindings = {
   Variables: any
@@ -80,7 +80,7 @@ app.route('/api/listings', listingRoutes)
 app.route('/api', imageRoutes)
 app.route('/api', produceItemRoutes)
 app.route('/api/chat', chatRoutes)
-app.route('/api/agent', agentRoutes)
+app.route('/api/glean', gleanRoutes)
 
 app.get(
   '/openapi.json',
