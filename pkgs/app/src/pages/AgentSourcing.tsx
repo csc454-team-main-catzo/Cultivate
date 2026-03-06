@@ -3,8 +3,7 @@ import { useUser } from "../providers/userContext";
 import { useListingActions } from "../hooks/useListingActions";
 import { ChatInterface } from "../features/agent-sourcing/components/chat-interface";
 import { getUserRole } from "../lib/auth";
-import type { InventoryDraftData } from "../features/agent-sourcing/types";
-import type { ProductGridItem } from "../features/agent-sourcing/types";
+import type { InventoryDraftData, ProductGridItem } from "../features/agent-sourcing/types";
 
 export default function AgentSourcing() {
   const { user } = useUser();

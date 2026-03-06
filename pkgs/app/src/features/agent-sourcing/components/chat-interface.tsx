@@ -9,7 +9,6 @@ import type {
   ProductGridItem,
   UserRole,
 } from "../types";
-import { ProductCard } from "./ProductCard";
 import { InventoryDraftCard } from "./InventoryDraftCard";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
@@ -18,6 +17,7 @@ import {
   FARMER_SUGGESTED_ACTIONS,
   RESTAURANT_SUGGESTED_ACTIONS,
 } from "@/components/ui/multimodal-ai-chat-input";
+import { InteractiveCheckout, type Product as CheckoutProduct } from "@/components/ui/interactive-checkout";
 import { cn } from "@/lib/utils";
 
 interface ChatInterfaceProps {
@@ -199,16 +199,19 @@ function MessageBubble({
           </div>
         )}
         {message.type === "product_grid" && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {message.items.map((item) => (
-              <ProductCard
-                key={item.id}
-                item={item}
-                primaryButtonClass={theme.primaryButtonClass}
-                onAddToOrder={onAddToOrder}
-                onNegotiate={onNegotiate}
-              />
-            ))}
+          <div className="rounded-2xl rounded-bl-md border border-zinc-200 bg-white px-3 py-3 sm:px-4 sm:py-4">
+            <InteractiveCheckout
+              products={message.items.map((item, index): CheckoutProduct => ({
+                id: item.id || `agent-${index}`,
+                name: item.title,
+                price: item.price,
+                category: item.item,
+                image:
+                  item.imageUrl ??
+                  "https://images.unsplash.com/photo-1567306226416-28f0efdc88ce?auto=format&fit=crop&w=600&q=80",
+                color: item.unit ?? "kg",
+              }))}
+            />
           </div>
         )}
         {message.type === "inventory_form" && (
