@@ -222,6 +222,7 @@ export function MultimodalInput({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [input, setInput] = useState("");
   const [uploadQueue, setUploadQueue] = useState<string[]>([]);
+  const [suggestionsOpen, setSuggestionsOpen] = useState(true);
 
   const adjustHeight = useCallback(() => {
     const ta = textareaRef.current;
@@ -300,12 +301,28 @@ export function MultimodalInput({
     textareaRef.current?.focus();
   }, [input, attachments, onSendMessage, setAttachments, resetHeight]);
 
-  const showSuggestedActions =
-    input.length === 0 && attachments.length === 0 && uploadQueue.length === 0;
+  const canShowSuggestionsBase =
+    input.length === 0 &&
+    attachments.length === 0 &&
+    uploadQueue.length === 0 &&
+    suggestedActions.length > 0;
+
+  const showSuggestedActions = canShowSuggestionsBase && suggestionsOpen;
   const isAttachmentDisabled = isGenerating || uploadQueue.length > 0;
 
   return (
     <div className={cn("relative w-full flex flex-col gap-4", className)}>
+      {canShowSuggestionsBase && (
+        <div className="flex justify-end">
+          <button
+            type="button"
+            onClick={() => setSuggestionsOpen((open) => !open)}
+            className="text-[11px] font-medium text-zinc-500 hover:text-zinc-700 underline-offset-2 hover:underline"
+          >
+            {suggestionsOpen ? "Hide suggestions" : "Show suggestions"}
+          </button>
+        </div>
+      )}
       <AnimatePresence>
         {showSuggestedActions && (
           <motion.div
