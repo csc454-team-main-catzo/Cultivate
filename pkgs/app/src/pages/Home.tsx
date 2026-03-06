@@ -35,8 +35,12 @@ export default function Home() {
   return (
     <div className="relative overflow-hidden min-h-[calc(100vh-3.5rem)] flex flex-col items-center justify-center px-4 sm:px-6">
       <div className="max-w-3xl mx-auto text-center">
-        <h1 className="text-4xl sm:text-5xl font-semibold text-zinc-900 tracking-tight mb-4">
-          Cultivate
+        <h1 className="mb-4">
+          <img
+            src="/logos/cultivate-logo-wordmark.png"
+            alt="Cultivate"
+            className="h-16 sm:h-20 w-auto mx-auto"
+          />
         </h1>
         <p className="text-xl text-zinc-600 mb-10 max-w-xl mx-auto">
           Connect farmers with restaurants. Source local, eat local.

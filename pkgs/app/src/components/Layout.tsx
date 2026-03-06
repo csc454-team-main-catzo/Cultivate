@@ -26,9 +26,14 @@ export default function Layout() {
             <div className="flex items-center gap-6">
               <Link
                 to="/"
-                className="text-lg font-semibold text-zinc-900 tracking-tight hover:text-zinc-700 transition-colors"
+                className="flex items-center gap-1 text-zinc-900 hover:opacity-80 transition-opacity"
+                aria-label="Cultivate home"
               >
-                Cultivate
+                <img
+                  src="/logos/cultivate-logo-wordmark.png"
+                  alt="Cultivate"
+                  className="h-9 w-auto"
+                />
               </Link>
               {user && (
                 <div className="flex gap-1">

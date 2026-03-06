@@ -27,7 +27,15 @@ export default function Register() {
 
   return (
     <div className="max-w-md mx-auto px-4 py-16 text-center">
-      <h1 className="text-2xl font-bold mb-2">Welcome to Cultivate 🌱</h1>
+      <h1 className="text-2xl font-bold mb-2 flex flex-wrap items-center justify-center gap-2">
+        Welcome to{" "}
+        <img
+          src="/logos/cultivate-logo-wordmark.png"
+          alt="Cultivate"
+          className="h-12 w-auto inline-block align-middle"
+        />{" "}
+        🌱
+      </h1>
       <p className="text-gray-600 mb-8">How will you be using the platform?</p>
 
       {error && (
