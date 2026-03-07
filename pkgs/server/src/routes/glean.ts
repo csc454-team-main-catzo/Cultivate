@@ -5,6 +5,7 @@ import { authMiddleware } from "../middleware/auth.js";
 import type { AuthenticatedContext } from "../middleware/types.js";
 import GleanChat from "../models/GleanChat.js";
 import GleanCart from "../models/GleanCart.js";
+import { runGleanAgent, type InventoryConstraints } from "../services/gleanAgent.js";
 import Listing from "../models/Listing.js";
 import { getProduceMatchTerms } from "../services/produceMatcher.js";
 
@@ -98,6 +99,27 @@ const CartBody = v.object({
       image: v.string(),
       color: v.string(),
       quantity: v.number(),
+    })
+  ),
+});
+
+const AgentBody = v.object({
+  prompt: v.pipe(v.string(), v.minLength(1, "prompt is required")),
+  role: v.picklist(["farmer", "restaurant"]),
+  priorMessages: v.optional(
+    v.array(
+      v.object({
+        role: v.picklist(["user", "assistant"]),
+        content: v.optional(v.string()),
+        type: v.optional(v.string()),
+      })
+    )
+  ),
+  inventoryConstraints: v.optional(
+    v.object({
+      maxPricePerKg: v.optional(v.number()),
+      preferredUnits: v.optional(v.array(v.picklist(["kg", "lb", "count", "bunch"]))),
+      maxWeightKg: v.optional(v.number()),
     })
   ),
 });
@@ -373,38 +395,29 @@ glean.put(
   }
 );
 
-/** POST /match — body: { prompt, role }. Returns real listing matches for restaurant (supply from farmers). */
+/** POST /match — Fuzzy search listings: restaurant sees supply (from farmers), farmer sees demand (from restaurants). */
 glean.post(
   "/match",
-  describeRoute({
-    operationId: "gleanMatch",
-    summary: "Match prompt to real supply listings (e.g. restaurant search)",
-    security: [{ bearerAuth: [] }, {}],
-    responses: {
-      200: { description: "Matched listings" },
-      400: { description: "Bad request" },
-    },
-  }),
   authMiddleware({ optional: true }),
   async (c) => {
     try {
       const raw = await readJson(c);
-      const prompt = typeof (raw as any)?.prompt === "string" ? (raw as any).prompt.trim() : "";
-      const role = (raw as any)?.role === "farmer" || (raw as any)?.role === "restaurant" ? (raw as any).role : "restaurant";
+      const body = raw as { prompt?: string; role?: string };
+      const prompt = typeof body.prompt === "string" ? body.prompt.trim() : "";
+      const role = body.role === "farmer" || body.role === "restaurant" ? body.role : "restaurant";
 
       if (!prompt) return c.json({ error: "prompt is required" }, 400);
-
-      if (role === "farmer") {
-        return c.json({ query: prompt, items: [], role: "farmer" });
-      }
 
       const terms = extractSearchTerms(prompt);
       const taxonomyTerms = await getProduceMatchTerms(terms);
       const matchTerms = taxonomyTerms.length > 0 ? taxonomyTerms : terms;
       const textQuery = buildMatchTextQuery(matchTerms);
 
+      const listingType = role === "farmer" ? "demand" : "supply";
+      const creatorRole = role === "farmer" ? "restaurant" : "farmer";
+
       let listings = await Listing.find({
-        type: "supply",
+        type: listingType,
         status: "open",
         ...textQuery,
       })
@@ -414,17 +427,17 @@ glean.post(
         .lean();
 
       listings = listings.filter(
-        (doc) => (doc.createdBy as { role?: string } | null)?.role === "farmer"
+        (doc) => (doc.createdBy as { role?: string } | null)?.role === creatorRole
       ).slice(0, 20);
 
       if (listings.length === 0) {
-        listings = await Listing.find({ type: "supply", status: "open" })
+        listings = await Listing.find({ type: listingType, status: "open" })
           .populate("createdBy", "name email role")
           .sort({ createdAt: -1 })
           .limit(30)
           .lean();
         listings = listings.filter(
-          (doc) => (doc.createdBy as { role?: string } | null)?.role === "farmer"
+          (doc) => (doc.createdBy as { role?: string } | null)?.role === creatorRole
         ).slice(0, 20);
       }
 
@@ -440,13 +453,49 @@ glean.post(
           price: doc.price ?? 0,
           qty: doc.qty ?? 0,
           unit: doc.unit ?? "kg",
-          farmerName: createdBy?.name ?? "Farmer",
+          farmerName: createdBy?.name ?? (role === "farmer" ? "Restaurant" : "Farmer"),
           farmerId: createdBy?._id != null ? String(createdBy._id) : "",
           imageId: photo?.imageId != null ? String(photo.imageId) : undefined,
         };
       });
 
-      return c.json({ query: prompt, items, role: "restaurant" });
+      return c.json({ query: prompt, items, role });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Unknown error";
+      return c.json({ error: message }, 500);
+    }
+  }
+);
+
+/** POST /agent — Glean Agent: LLM + listing search, returns structured intro + payload. */
+glean.post(
+  "/agent",
+  describeRoute({
+    operationId: "gleanAgent",
+    summary: "Run Glean agent: forward prompt (and optional context) to LLM and listing search, return intro text + product suggestions or draft listing",
+    security: [{ bearerAuth: [] }, {}],
+    responses: {
+      200: { description: "Intro text and structured payload (product_grid or inventory_form)" },
+      400: { description: "Invalid request" },
+    },
+  }),
+  authMiddleware({ optional: true }),
+  async (c) => {
+    try {
+      const raw = await readJson(c);
+      const body = raw as { prompt?: string; role?: string; priorMessages?: unknown[]; inventoryConstraints?: unknown };
+      const prompt = typeof body.prompt === "string" ? body.prompt.trim() : "";
+      const role = body.role === "farmer" || body.role === "restaurant" ? body.role : "restaurant";
+
+      if (!prompt) return c.json({ error: "prompt is required" }, 400);
+
+      const result = await runGleanAgent({
+        prompt,
+        role,
+        priorMessages: Array.isArray(body.priorMessages) ? body.priorMessages as { role: "user" | "assistant"; content?: string; type?: string }[] : [],
+        inventoryConstraints: body.inventoryConstraints as InventoryConstraints | undefined,
+      });
+      return c.json({ introText: result.introText, payload: result.payload });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Unknown error";
       return c.json({ error: message }, 500);
