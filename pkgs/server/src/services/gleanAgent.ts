@@ -115,6 +115,8 @@ export interface ProductSuggestionItem {
   farmerName: string;
   farmerId: string;
   imageId?: string;
+  /** When the listing is available for delivery/pickup (optional). */
+  deliveryWindow?: { startAt: string; endAt: string };
 }
 
 export type GleanAgentPayload =
@@ -214,6 +216,7 @@ async function fetchListingMatches(
   return listings.map((doc) => {
     const createdBy = doc.createdBy as { _id: unknown; name?: string } | null;
     const photo = Array.isArray(doc.photos) && doc.photos.length > 0 ? doc.photos[0] : null;
+    const dw = doc.deliveryWindow as { startAt?: Date; endAt?: Date } | undefined;
     return {
       id: String(doc._id),
       listingId: String(doc._id),
@@ -226,6 +229,13 @@ async function fetchListingMatches(
       farmerName: createdBy?.name ?? defaultCreatorName,
       farmerId: createdBy?._id != null ? String(createdBy._id) : "",
       imageId: photo?.imageId != null ? String(photo.imageId) : undefined,
+      deliveryWindow:
+        dw?.startAt && dw?.endAt
+          ? {
+              startAt: typeof dw.startAt === "string" ? dw.startAt : (dw.startAt as Date).toISOString(),
+              endAt: typeof dw.endAt === "string" ? dw.endAt : (dw.endAt as Date).toISOString(),
+            }
+          : undefined,
     };
   });
 }

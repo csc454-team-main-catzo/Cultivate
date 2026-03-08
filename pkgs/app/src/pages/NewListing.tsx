@@ -84,6 +84,17 @@ export default function NewListing() {
     setError(null);
   }
 
+  function updateAvailability(
+    key: "startAt" | "endAt",
+    value: string
+  ) {
+    setForm((prev) => ({
+      ...prev,
+      availability: { ...prev.availability, [key]: value },
+    }));
+    setError(null);
+  }
+
   function preventWheelStepChange(
     e: React.WheelEvent<HTMLInputElement>
   ) {
@@ -235,6 +246,11 @@ export default function NewListing() {
 
       const type = user?.role === "farmer" ? "supply" : "demand";
 
+      const deliveryWindow =
+        form.availability.startAt && form.availability.endAt
+          ? { startAt: form.availability.startAt, endAt: form.availability.endAt }
+          : undefined;
+
       // Current backend create payload still expects item + latLng.
       // We map from the richer form model without auto-filling unsafe fields.
       await createListing({
@@ -247,6 +263,7 @@ export default function NewListing() {
         unit: (form.unit || "kg") as "kg" | "lb" | "count" | "bunch",
         latLng,
         photos: form.photos,
+        deliveryWindow,
       });
 
       navigate("/listings");
@@ -494,10 +511,10 @@ export default function NewListing() {
           />
         </div>
 
-        {/* <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-zinc-700 mb-1">
-              Available from <span className="text-red-500">*</span>
+              Delivery window — from
             </label>
             <input
               type="datetime-local"
@@ -508,7 +525,7 @@ export default function NewListing() {
           </div>
           <div>
             <label className="block text-sm font-medium text-zinc-700 mb-1">
-              Available until <span className="text-red-500">*</span>
+              Delivery window — until
             </label>
             <input
               type="datetime-local"
@@ -517,7 +534,7 @@ export default function NewListing() {
               className="input-field"
             />
           </div>
-        </div> */}
+        </div>
 
         {/* <div>
           <label className="block text-sm font-medium text-zinc-700 mb-1">

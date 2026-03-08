@@ -612,6 +612,7 @@ listings.patch(
       if (data.qty !== undefined) listing.qty = data.qty;
       if (data.status !== undefined) listing.status = data.status;
       if (data.latLng !== undefined) listing.latLng = data.latLng;
+      if (data.deliveryWindow !== undefined) listing.deliveryWindow = data.deliveryWindow;
 
       await listing.save();
 

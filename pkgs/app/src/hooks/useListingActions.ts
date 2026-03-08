@@ -23,6 +23,8 @@ export interface CreateListingBody {
   unit?: "kg" | "lb" | "count" | "bunch";
   latLng: [number, number];
   photos?: Array<{ imageId: string }>;
+  /** Optional delivery/availability window (ISO date strings). */
+  deliveryWindow?: { startAt: string; endAt: string };
 }
 
 export interface UploadImageResponse {

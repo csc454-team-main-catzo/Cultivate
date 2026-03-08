@@ -79,6 +79,12 @@ export const ListingCreateSchema = v.object({
     ),
     v.transform((val) => val as [number, number])
   ),
+  deliveryWindow: v.optional(
+    v.object({
+      startAt: v.string("deliveryWindow.startAt must be an ISO date string"),
+      endAt: v.string("deliveryWindow.endAt must be an ISO date string"),
+    })
+  ),
   expiresAt: v.optional(v.string("expiresAt must be an ISO date string")),
 });
 
@@ -119,6 +125,12 @@ export const ListingUpdateSchema = v.partial(
       ),
       v.transform((val) => val as [number, number])
     ),
+    deliveryWindow: v.optional(
+      v.object({
+        startAt: v.string(),
+        endAt: v.string(),
+      })
+    ),
   })
 );
 
@@ -150,6 +162,11 @@ export type ResponseCreateInput = v.InferOutput<typeof ResponseCreateSchema>;
 
 /* ---------- Response Schemas ---------- */
 
+const DeliveryWindowSchema = v.object({
+  startAt: v.string(),
+  endAt: v.string(),
+});
+
 export const ListingResponseSchema = v.object({
   _id: v.string(),
   type: ListingTypeSchema,
@@ -159,12 +176,13 @@ export const ListingResponseSchema = v.object({
   price: v.number(),
   qty: v.number(),
   unit: v.optional(ResponseUnitSchema, "kg"),
-    photos: v.array(
-      v.object({
-        imageId: v.string(),
-      })
-    ),
+  photos: v.array(
+    v.object({
+      imageId: v.string(),
+    })
+  ),
   latLng: v.tuple([v.number(), v.number()]),
+  deliveryWindow: v.optional(v.nullable(DeliveryWindowSchema)),
   createdBy: PopulatedUserSchema,
   matchedResponseId: v.nullable(v.string()),
   status: ListingStatusSchema,

@@ -35,6 +35,8 @@ export interface ProductGridItem {
   /** From API: listing photo id; frontend can resolve to imageUrl. */
   imageId?: string;
   imageUrl?: string;
+  /** When the listing is available for delivery/pickup (optional). */
+  deliveryWindow?: { startAt: string; endAt: string };
 }
 
 export interface ProductGridMessage extends AgentMessageBase {

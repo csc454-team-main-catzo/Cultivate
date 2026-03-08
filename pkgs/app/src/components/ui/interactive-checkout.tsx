@@ -13,6 +13,8 @@ export interface Product {
   category: string;
   image: string;
   color: string;
+  /** Optional delivery/availability window for listing. */
+  deliveryWindow?: { startAt: string; endAt: string };
 }
 
 export interface CartItem extends Product {
@@ -174,10 +176,22 @@ function InteractiveCheckout({
                         {product.category}
                       </span>
                     </div>
-                    <div className="flex items-center gap-2 text-sm text-zinc-500">
-                      <span>${product.price.toFixed(2)}</span>
-                      <span>•</span>
-                      <span>{product.color}</span>
+                    <div className="flex flex-col gap-0.5 text-sm text-zinc-500">
+                      <span>${product.price.toFixed(2)} • {product.color}</span>
+                      {product.deliveryWindow?.startAt && product.deliveryWindow?.endAt && (
+                        <span className="text-xs text-zinc-500">
+                          Delivery:{" "}
+                          {new Date(product.deliveryWindow.startAt).toLocaleString(undefined, {
+                            dateStyle: "short",
+                            timeStyle: "short",
+                          })}{" "}
+                          –{" "}
+                          {new Date(product.deliveryWindow.endAt).toLocaleString(undefined, {
+                            dateStyle: "short",
+                            timeStyle: "short",
+                          })}
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>

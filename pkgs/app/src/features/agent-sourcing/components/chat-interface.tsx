@@ -367,6 +367,7 @@ function MessageBubble({
                   item.imageUrl ??
                   "https://images.unsplash.com/photo-1567306226416-28f0efdc88ce?auto=format&fit=crop&w=600&q=80",
                 color: item.unit ?? "kg",
+                deliveryWindow: item.deliveryWindow,
               }))}
               cart={cart}
               onCartChange={onCartChange}
