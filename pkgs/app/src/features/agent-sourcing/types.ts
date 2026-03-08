@@ -52,6 +52,10 @@ export interface InventoryDraftData {
   weightKg: number;
   pricePerKg: number;
   unit?: "kg" | "lb" | "count" | "bunch";
+  /** When set, attach this image when posting (from chat upload). */
+  imageId?: string;
+  /** Optional delivery/availability window when posting. */
+  deliveryWindow?: { startAt: string; endAt: string };
 }
 
 export interface InventoryFormMessage extends AgentMessageBase {

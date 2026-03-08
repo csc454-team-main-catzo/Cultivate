@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/multimodal-ai-chat-input";
 import { useAuth0 } from "@auth0/auth0-react";
 import CFG from "@/config";
+import { useListingActions } from "@/hooks/useListingActions";
 import { InteractiveCheckout, type CartItem, type Product as CheckoutProduct } from "@/components/ui/interactive-checkout";
 import { CheckoutForm } from "@/components/ui/checkout-form";
 import { OrderConfirmationCard } from "@/components/ui/order-confirmation-card";
@@ -27,14 +28,17 @@ interface ChatInterfaceProps {
   role: UserRole | undefined;
   chatId: string | null;
   onPostInventory?: (draft: InventoryDraftData) => void;
+  onClearPostError?: () => void;
 }
 
 export function ChatInterface({
   role = "farmer",
   chatId,
   onPostInventory,
+  onClearPostError,
 }: ChatInterfaceProps) {
   const { isAuthenticated, getAccessTokenSilently } = useAuth0();
+  const { uploadImage } = useListingActions();
   const { messages, isThinking, sendMessage, cancelThinking } = useAgent({
     role,
     chatId,
@@ -57,15 +61,27 @@ export function ChatInterface({
   const AgentIcon = role === "farmer" ? Tractor : ChefHat;
 
   const handleSendMessage = useCallback(
-    ({ input }: { input: string; attachments: Attachment[] }) => {
+    async ({ input, attachments }: { input: string; attachments: Attachment[] }) => {
       const trimmed = input.trim();
-      // Important: don't allow sending until we have a persisted chatId,
-      // otherwise messages won't be stored server-side and will disappear on remount.
       if (!chatId) return;
-      if (trimmed) sendMessage(trimmed);
-      // Attachments could be used for image-based listing (future)
+      onClearPostError?.();
+      if (!trimmed && attachments.length === 0) return;
+      let imageId: string | undefined;
+      const imageAttachment = attachments.find(
+        (a) => a.file && a.contentType?.startsWith("image/")
+      );
+      if (imageAttachment?.file) {
+        try {
+          const res = await uploadImage(imageAttachment.file);
+          imageId = res.imageId;
+        } catch (err) {
+          console.error("Failed to upload chat image:", err);
+        }
+      }
+      const textToSend = trimmed || (imageId ? "Create listing from this photo" : "");
+      if (textToSend || imageId) sendMessage(textToSend, imageId ? { imageId } : undefined);
     },
-    [chatId, sendMessage]
+    [chatId, sendMessage, onClearPostError, uploadImage]
   );
 
   const suggestedActions =

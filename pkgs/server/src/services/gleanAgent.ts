@@ -11,6 +11,7 @@
 import OpenAIModule from "openai";
 import Listing from "../models/Listing.js";
 import { getProduceMatchTerms } from "./produceMatcher.js";
+import { getDraftSuggestedFieldsFromImage } from "./draftFromImage.js";
 
 /** Minimal type for OpenAI-compatible chat client (avoids using package namespace as type). */
 interface LLMClient {
@@ -90,6 +91,10 @@ export interface GleanAgentRequest {
   role: "farmer" | "restaurant";
   priorMessages?: PriorMessage[];
   inventoryConstraints?: InventoryConstraints;
+  /** When set (farmer), use Azure CV to fill title/item/description from this image, then merge with text for price, qty, delivery window. */
+  imageId?: string;
+  /** Required when imageId is set, for image ownership check. */
+  userId?: string;
 }
 
 /** Draft listing fields (farmer). */
@@ -100,6 +105,10 @@ export interface DraftListing {
   weightKg: number;
   pricePerKg: number;
   unit?: "kg" | "lb" | "count" | "bunch";
+  /** Attach this image to the listing when posting (from chat upload). */
+  imageId?: string;
+  /** Optional delivery/availability window (from user text). */
+  deliveryWindow?: { startAt: string; endAt: string };
 }
 
 /** Product suggestion item (restaurant) — matches ProductGridItem on frontend. */
@@ -240,6 +249,8 @@ async function fetchListingMatches(
   });
 }
 
+const FARMER_EXTRACT_FROM_TEXT_SYSTEM = `You are a Glean assistant. The user is creating a listing and we already have title, item, and description from their uploaded image. From their message extract ONLY: price per kg (number), weight/quantity in kg (number), unit (kg/lb/count/bunch), and if they mention when they are available for delivery or pickup, output a delivery window as two ISO 8601 date-time strings (startAt, endAt). Use the next occurrence of the mentioned day/time if relative (e.g. "Friday 9am-5pm" = this or next Friday; "delivered from 10 to 12:00 p.m. on Sunday" = next Sunday 10:00 and 12:00 in local time). Always include deliveryWindow with valid startAt and endAt whenever the user mentions a time window (e.g. "10 to 12", "10-12", "from X to Y on Sunday"). Reply with exactly one JSON object (no markdown): { "pricePerKg": number or null, "weightKg": number or null, "unit": "kg"|"lb"|"count"|"bunch" or null, "deliveryWindow": { "startAt": "ISO8601", "endAt": "ISO8601" } or null }. Omit deliveryWindow only if no time/delivery window is mentioned.`;
+
 const FARMER_SYSTEM = `You are a Glean assistant helping farmers list their produce. From the user's message, extract a draft listing. Respond with exactly one JSON object (no markdown, no code block) with this shape:
 {
   "introText": "One short sentence to show the user (e.g. 'Here's your draft. Confirm weight and price, then tap Post to list it.')",
@@ -249,10 +260,11 @@ const FARMER_SYSTEM = `You are a Glean assistant helping farmers list their prod
     "description": "Optional 1-2 sentence description or empty string",
     "weightKg": number (numeric only, e.g. 20),
     "pricePerKg": number (e.g. 2.5),
-    "unit": "kg" or "lb" or "count" or "bunch"
+    "unit": "kg" or "lb" or "count" or "bunch",
+    "deliveryWindow": { "startAt": "ISO 8601 date-time", "endAt": "ISO 8601 date-time" } or null — whenever the user mentions a delivery or availability time (e.g. "delivered from 10 to 12:00 p.m. on Sunday" or "Sunday 10 to 12 PM" → next Sunday 10:00 and 12:00 in local time as ISO strings; "10-12 on Friday" → next Friday 10:00 and 12:00)
   }
 }
-If the user did not specify weight or price, use sensible defaults (e.g. weightKg 20, pricePerKg 2.5).`;
+If the user did not specify weight or price, use sensible defaults (e.g. weightKg 20, pricePerKg 2.5). Always set deliveryWindow with valid startAt and endAt ISO strings when the user mentions any time range for delivery or availability; omit only if no time is mentioned.`;
 
 const RESTAURANT_INTRO_SYSTEM = `You are a Glean assistant. A restaurant asked for produce and we found matching listings. Generate exactly one short, friendly intro sentence that mentions the number of matches. Vary your wording — use different phrasings, don't always end with the same line.
 
@@ -287,9 +299,26 @@ function fallbackDraftFromPrompt(prompt: string): { introText: string; draft: Dr
   };
 }
 
+/** Detect if the user wants to create/post a new listing (not search for existing ones). */
+function hasCreateListingIntent(prompt: string): boolean {
+  const lower = prompt.toLowerCase().trim();
+  const createPatterns = [
+    /\bcreate\s+(a\s+)?(new\s+)?listing\b/,
+    /\b(?:i\s+)?(?:want\s+to\s+)?create\s+(?:a\s+)?(?:new\s+)?listing\b/,
+    /\b(?:i\s+)?(?:want\s+to\s+)?list\s+(?:my\s+)?/,
+    /\blist\s+my\s+(?:harvest|produce)/,
+    /\bpost\s+(?:a\s+)?(?:new\s+)?listing\b/,
+    /\b(?:add|put)\s+(?:up\s+)?(?:a\s+)?listing\b/,
+    /\b(?:i\s+)?(?:want\s+to\s+)?(?:list|post)\s+\d+\s*(kg|lb)/,  // e.g. "list 100 kg"
+    /\b(?:list|sell)\s+\d+/,
+  ];
+  return createPatterns.some((re) => re.test(lower));
+}
+
 /**
  * Run the Glean agent: LLM + optional listing search.
  * Returns intro text and structured payload (product_grid or inventory_form).
+ * When the user clearly asks to "create a new listing", we return a draft (inventory_form) even for restaurant role.
  */
 export async function runGleanAgent(req: GleanAgentRequest): Promise<GleanAgentResponse> {
   const { prompt, role, priorMessages = [], inventoryConstraints } = req;
@@ -303,7 +332,10 @@ export async function runGleanAgent(req: GleanAgentRequest): Promise<GleanAgentR
     console.warn("[Glean] No LLM client: set GROQ_API_KEY, OPENROUTER_API_KEY, or OPENAI_API_KEY in .env and restart the server.");
   }
 
-  if (role === "restaurant") {
+  // If the user clearly wants to create a listing, run the draft flow regardless of role (don't search).
+  const useDraftFlow = role === "farmer" || hasCreateListingIntent(trimmed);
+
+  if (role === "restaurant" && !useDraftFlow) {
     const referencedProduce = extractReferencedProduce(trimmed);
     const items = await fetchListingMatches(trimmed, role, {
       focusProduce: referencedProduce ?? undefined,
@@ -369,6 +401,92 @@ export async function runGleanAgent(req: GleanAgentRequest): Promise<GleanAgentR
     };
   }
 
+  // Farmer with image: Azure CV draft + merge text (price, qty, delivery window)
+  if (role === "farmer" && req.imageId && req.userId) {
+    let imageFields: Awaited<ReturnType<typeof getDraftSuggestedFieldsFromImage>> | null = null;
+    try {
+      imageFields = await getDraftSuggestedFieldsFromImage(req.imageId, req.userId);
+    } catch {
+      // 404/403 or vision failure: fall through to text-only draft
+    }
+    if (imageFields && client) {
+      try {
+        const res = await client.chat.completions.create({
+          model: getLLMModel(),
+          messages: [
+            { role: "system", content: FARMER_EXTRACT_FROM_TEXT_SYSTEM },
+            { role: "user", content: trimmed },
+          ],
+          response_format: { type: "json_object" },
+          max_tokens: 200,
+        });
+        const raw = res.choices[0]?.message?.content;
+        if (raw) {
+          const parsed = JSON.parse(raw) as {
+            pricePerKg?: number | null;
+            weightKg?: number | null;
+            unit?: string | null;
+            deliveryWindow?: { startAt?: string; endAt?: string } | null;
+          };
+          const weightKg = Number(parsed.weightKg) || 20;
+          const pricePerKg = Number(parsed.pricePerKg) ?? imageFields.suggestedPricePerKg ?? 2.5;
+          const unit = ["kg", "lb", "count", "bunch"].includes(parsed.unit as string) ? parsed.unit : (imageFields.suggestedUnit ?? "kg");
+          const deliveryWindow =
+            parsed.deliveryWindow?.startAt && parsed.deliveryWindow?.endAt
+              ? { startAt: parsed.deliveryWindow.startAt, endAt: parsed.deliveryWindow.endAt }
+              : undefined;
+          const draft: DraftListing = {
+            title: imageFields.title,
+            item: imageFields.item,
+            description: imageFields.description,
+            weightKg,
+            pricePerKg,
+            unit: unit as "kg" | "lb" | "count" | "bunch",
+            imageId: req.imageId,
+            deliveryWindow,
+          };
+          return {
+            introText: "Here's your draft from the photo and your message. Confirm weight and price, then tap Post to list it.",
+            payload: { type: "inventory_form", draft, userMessage: trimmed },
+          };
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error("[Glean] Extract-from-text (with image) failed:", msg);
+      }
+      // LLM extract failed: still return draft from image with defaults
+      const draft: DraftListing = {
+        title: imageFields.title,
+        item: imageFields.item,
+        description: imageFields.description,
+        weightKg: 20,
+        pricePerKg: imageFields.suggestedPricePerKg ?? 2.5,
+        unit: (imageFields.suggestedUnit as "kg" | "lb" | "count" | "bunch") ?? "kg",
+        imageId: req.imageId,
+      };
+      return {
+        introText: "Here's your draft from the photo. Fill in weight, price, and delivery window above, then tap Post to list it.",
+        payload: { type: "inventory_form", draft, userMessage: trimmed },
+      };
+    }
+    if (imageFields && !client) {
+      // Image draft ok but no LLM: return draft with defaults
+      const draft: DraftListing = {
+        title: imageFields.title,
+        item: imageFields.item,
+        description: imageFields.description,
+        weightKg: 20,
+        pricePerKg: imageFields.suggestedPricePerKg ?? 2.5,
+        unit: (imageFields.suggestedUnit as "kg" | "lb" | "count" | "bunch") ?? "kg",
+        imageId: req.imageId,
+      };
+      return {
+        introText: "Here's your draft from the photo. Fill in weight, price, and delivery window above, then tap Post to list it.",
+        payload: { type: "inventory_form", draft, userMessage: trimmed },
+      };
+    }
+  }
+
   // Farmer: LLM to extract draft
   if (client) {
     try {
@@ -386,9 +504,13 @@ export async function runGleanAgent(req: GleanAgentRequest): Promise<GleanAgentR
       });
       const raw = res.choices[0]?.message?.content;
       if (raw) {
-        const parsed = JSON.parse(raw) as { introText?: string; draft?: DraftListing };
+        const parsed = JSON.parse(raw) as { introText?: string; draft?: DraftListing & { deliveryWindow?: { startAt?: string; endAt?: string } | null } };
         if (parsed.draft && typeof parsed.draft === "object") {
           const d = parsed.draft;
+          const deliveryWindow =
+            d.deliveryWindow?.startAt && d.deliveryWindow?.endAt
+              ? { startAt: d.deliveryWindow.startAt, endAt: d.deliveryWindow.endAt }
+              : undefined;
           const draft: DraftListing = {
             title: String(d.title ?? "").slice(0, 150) || "Fresh produce",
             item: String(d.item ?? "produce").slice(0, 100),
@@ -396,9 +518,15 @@ export async function runGleanAgent(req: GleanAgentRequest): Promise<GleanAgentR
             weightKg: Number(d.weightKg) || 20,
             pricePerKg: Number(d.pricePerKg) || 2.5,
             unit: ["kg", "lb", "count", "bunch"].includes(d.unit as string) ? d.unit : "kg",
+            ...(deliveryWindow && { deliveryWindow }),
           };
+          const baseIntro =
+            typeof parsed.introText === "string" ? parsed.introText.trim() : "Here's your draft. Confirm weight and price, then tap Post to list it.";
+          const introText = draft.imageId
+            ? baseIntro
+            : `${baseIntro} Consider adding a photo to your listing for better visibility.`;
           return {
-            introText: typeof parsed.introText === "string" ? parsed.introText.trim() : "Here's your draft. Confirm weight and price, then tap Post to list it.",
+            introText,
             payload: { type: "inventory_form", draft, userMessage: trimmed },
           };
         }
@@ -411,8 +539,11 @@ export async function runGleanAgent(req: GleanAgentRequest): Promise<GleanAgentR
   }
 
   const fallback = fallbackDraftFromPrompt(trimmed);
+  const fallbackIntro = fallback.draft.imageId
+    ? fallback.introText
+    : `${fallback.introText} Consider adding a photo for better visibility.`;
   return {
-    introText: fallback.introText,
+    introText: fallbackIntro,
     payload: { type: "inventory_form", draft: fallback.draft, userMessage: trimmed },
   };
 }

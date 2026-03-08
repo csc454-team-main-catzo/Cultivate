@@ -85,6 +85,13 @@ const AppendMessageBody = v.object({
       weightKg: v.number(),
       pricePerKg: v.number(),
       unit: v.optional(v.picklist(["kg", "lb", "count", "bunch"])),
+      imageId: v.optional(v.string()),
+      deliveryWindow: v.optional(
+        v.object({
+          startAt: v.string(),
+          endAt: v.string(),
+        })
+      ),
     })
   ),
 });
@@ -122,6 +129,8 @@ const AgentBody = v.object({
       maxWeightKg: v.optional(v.number()),
     })
   ),
+  /** When set with role=famer, use this uploaded image (Azure CV) to fill title/item/description; user text fills price, qty, delivery window. */
+  imageId: v.optional(v.pipe(v.string(), v.minLength(1))),
 });
 
 async function readJson(c: any): Promise<unknown> {
@@ -483,17 +492,23 @@ glean.post(
   async (c) => {
     try {
       const raw = await readJson(c);
-      const body = raw as { prompt?: string; role?: string; priorMessages?: unknown[]; inventoryConstraints?: unknown };
-      const prompt = typeof body.prompt === "string" ? body.prompt.trim() : "";
-      const role = body.role === "farmer" || body.role === "restaurant" ? body.role : "restaurant";
+      const parsed = v.safeParse(AgentBody, raw);
+      if (!parsed.success) {
+        return c.json({ error: "Invalid request body", details: parsed.issues }, 400);
+      }
+      const body = parsed.output;
+      const prompt = body.prompt.trim();
+      const role = body.role;
 
-      if (!prompt) return c.json({ error: "prompt is required" }, 400);
+      const userId = c.get("userId") ?? undefined;
 
       const result = await runGleanAgent({
         prompt,
         role,
-        priorMessages: Array.isArray(body.priorMessages) ? body.priorMessages as { role: "user" | "assistant"; content?: string; type?: string }[] : [],
-        inventoryConstraints: body.inventoryConstraints as InventoryConstraints | undefined,
+        priorMessages: body.priorMessages ?? [],
+        inventoryConstraints: body.inventoryConstraints,
+        imageId: body.imageId,
+        userId: body.imageId ? userId : undefined,
       });
       return c.json({ introText: result.introText, payload: result.payload });
     } catch (err: unknown) {

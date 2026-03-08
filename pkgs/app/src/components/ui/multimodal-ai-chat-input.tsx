@@ -19,6 +19,8 @@ export interface Attachment {
   name: string;
   contentType: string;
   size: number;
+  /** When set, used to upload to server before sending (e.g. for agent image draft). */
+  file?: File;
 }
 
 export interface SuggestedAction {
@@ -231,7 +233,7 @@ export interface MultimodalInputProps {
   suggestedActions: SuggestedAction[];
   attachments: Attachment[];
   setAttachments: Dispatch<SetStateAction<Attachment[]>>;
-  onSendMessage: (params: { input: string; attachments: Attachment[] }) => void;
+  onSendMessage: (params: { input: string; attachments: Attachment[] }) => void | Promise<void>;
   onStopGenerating: () => void;
   isGenerating: boolean;
   canSend: boolean;
@@ -298,6 +300,7 @@ export function MultimodalInput({
             name: file.name,
             contentType: file.type || "application/octet-stream",
             size: file.size,
+            file,
           });
         } catch {
           resolve(undefined);
@@ -334,14 +337,15 @@ export function MultimodalInput({
 
   const submitForm = useCallback(() => {
     if (!input.trim() && attachments.length === 0) return;
-    onSendMessage({ input: input.trim(), attachments });
-    setInput("");
-    setAttachments([]);
-    attachments.forEach((a) => {
-      if (a.url.startsWith("blob:")) URL.revokeObjectURL(a.url);
+    void Promise.resolve(onSendMessage({ input: input.trim(), attachments })).then(() => {
+      setInput("");
+      setAttachments([]);
+      attachments.forEach((a) => {
+        if (a.url.startsWith("blob:")) URL.revokeObjectURL(a.url);
+      });
+      resetHeight();
+      textareaRef.current?.focus();
     });
-    resetHeight();
-    textareaRef.current?.focus();
   }, [input, attachments, onSendMessage, setAttachments, resetHeight]);
 
   const speechSupport = getSpeechRecognition();
