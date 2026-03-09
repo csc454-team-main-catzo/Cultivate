@@ -9,7 +9,7 @@ import React, {
   type ChangeEvent,
 } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Loader2 as LoaderIcon, X as XIcon } from "lucide-react";
+import { Loader2 as LoaderIcon, Mic, MicOff, X as XIcon } from "lucide-react";
 import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
 
@@ -19,6 +19,8 @@ export interface Attachment {
   name: string;
   contentType: string;
   size: number;
+  /** When set, used to upload to server before sending (e.g. for agent image draft). */
+  file?: File;
 }
 
 export interface SuggestedAction {
@@ -113,6 +115,38 @@ const ArrowUpIcon = ({ size = 16 }: { size?: number }) => (
   </svg>
 );
 
+/** Web Speech API types (not in all TS libs). */
+interface SpeechRecognitionResultList {
+  length: number;
+  item(index: number): { transcript: string; isFinal: boolean; length: number };
+  [index: number]: { transcript: string; isFinal: boolean; length: number };
+}
+interface SpeechRecognitionEvent extends Event {
+  resultIndex: number;
+  results: SpeechRecognitionResultList;
+}
+interface SpeechRecognitionConstructor {
+  new (): {
+    start: () => void;
+    stop: () => void;
+    continuous: boolean;
+    interimResults: boolean;
+    lang: string;
+    onresult: ((event: SpeechRecognitionEvent) => void) | null;
+    onend: (() => void) | null;
+    onerror: (() => void) | null;
+  };
+}
+/** Web Speech API (webkit prefix in Safari). */
+function getSpeechRecognition(): SpeechRecognitionConstructor | null {
+  if (typeof window === "undefined") return null;
+  const w = window as Window & {
+    SpeechRecognition?: SpeechRecognitionConstructor;
+    webkitSpeechRecognition?: SpeechRecognitionConstructor;
+  };
+  return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null;
+}
+
 // Suggested Actions
 const SuggestedActions = memo(function SuggestedActions({
   suggestedActions,
@@ -199,7 +233,7 @@ export interface MultimodalInputProps {
   suggestedActions: SuggestedAction[];
   attachments: Attachment[];
   setAttachments: Dispatch<SetStateAction<Attachment[]>>;
-  onSendMessage: (params: { input: string; attachments: Attachment[] }) => void;
+  onSendMessage: (params: { input: string; attachments: Attachment[] }) => void | Promise<void>;
   onStopGenerating: () => void;
   isGenerating: boolean;
   canSend: boolean;
@@ -220,8 +254,10 @@ export function MultimodalInput({
 }: MultimodalInputProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const recognitionRef = useRef<{ start: () => void; stop: () => void } | null>(null);
   const [input, setInput] = useState("");
   const [uploadQueue, setUploadQueue] = useState<string[]>([]);
+  const [isListening, setIsListening] = useState(false);
   const [suggestionsOpen, setSuggestionsOpen] = useState(() => {
     try {
       const raw = window.localStorage.getItem("glean:suggestionsOpen");
@@ -264,6 +300,7 @@ export function MultimodalInput({
             name: file.name,
             contentType: file.type || "application/octet-stream",
             size: file.size,
+            file,
           });
         } catch {
           resolve(undefined);
@@ -300,15 +337,57 @@ export function MultimodalInput({
 
   const submitForm = useCallback(() => {
     if (!input.trim() && attachments.length === 0) return;
-    onSendMessage({ input: input.trim(), attachments });
-    setInput("");
-    setAttachments([]);
-    attachments.forEach((a) => {
-      if (a.url.startsWith("blob:")) URL.revokeObjectURL(a.url);
+    void Promise.resolve(onSendMessage({ input: input.trim(), attachments })).then(() => {
+      setInput("");
+      setAttachments([]);
+      attachments.forEach((a) => {
+        if (a.url.startsWith("blob:")) URL.revokeObjectURL(a.url);
+      });
+      resetHeight();
+      textareaRef.current?.focus();
     });
-    resetHeight();
-    textareaRef.current?.focus();
   }, [input, attachments, onSendMessage, setAttachments, resetHeight]);
+
+  const speechSupport = getSpeechRecognition();
+  const committedTranscriptRef = useRef("");
+  const toggleVoiceInput = useCallback(() => {
+    if (!speechSupport) return;
+    if (isListening) {
+      recognitionRef.current?.stop();
+      return;
+    }
+    committedTranscriptRef.current = input;
+    const Recognition = speechSupport;
+    const recognition = new Recognition();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = "en-US";
+    recognition.onresult = (event: SpeechRecognitionEvent) => {
+      let interim = "";
+      const results = event.results as unknown as Array<{ [j: number]: { transcript: string }; isFinal?: boolean }>;
+      for (let i = event.resultIndex; i < results.length; i++) {
+        const result = results[i];
+        const text = result[0]?.transcript ?? "";
+        if (result.isFinal) {
+          committedTranscriptRef.current += (committedTranscriptRef.current ? " " : "") + text;
+        } else {
+          interim += text;
+        }
+      }
+      setInput(committedTranscriptRef.current + (interim ? " " + interim : ""));
+    };
+    recognition.onend = () => {
+      setIsListening(false);
+      recognitionRef.current = null;
+    };
+    recognition.onerror = () => {
+      setIsListening(false);
+      recognitionRef.current = null;
+    };
+    recognitionRef.current = { start: () => recognition.start(), stop: () => recognition.stop() };
+    recognition.start();
+    setIsListening(true);
+  }, [speechSupport, isListening, input]);
 
   const canShowSuggestionsBase =
     input.length === 0 &&
@@ -431,7 +510,7 @@ export function MultimodalInput({
           }}
         />
 
-        <div className="absolute bottom-0 left-0 p-2 flex flex-row justify-start z-10">
+        <div className="absolute bottom-0 left-0 p-2 flex flex-row justify-start gap-0.5 z-10">
           <Button
             variant="ghost"
             className="rounded-md rounded-bl-lg p-1.5 h-fit border border-zinc-200 hover:bg-zinc-100"
@@ -441,6 +520,26 @@ export function MultimodalInput({
           >
             <PaperclipIcon size={14} />
           </Button>
+          {speechSupport && (
+            <Button
+              variant="ghost"
+              className={cn(
+                "rounded-md p-1.5 h-fit border",
+                isListening
+                  ? "border-red-300 bg-red-50 text-red-700 hover:bg-red-100"
+                  : "border-zinc-200 hover:bg-zinc-100"
+              )}
+              onClick={toggleVoiceInput}
+              disabled={isGenerating || uploadQueue.length > 0}
+              aria-label={isListening ? "Stop listening" : "Voice input"}
+            >
+              {isListening ? (
+                <MicOff size={14} className="text-red-600" />
+              ) : (
+                <Mic size={14} />
+              )}
+            </Button>
+          )}
         </div>
 
         <div className="absolute bottom-0 right-0 p-2 flex flex-row justify-end z-10">

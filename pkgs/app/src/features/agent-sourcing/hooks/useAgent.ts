@@ -109,7 +109,7 @@ export interface UseAgentOptions {
 export interface UseAgentReturn {
   messages: AgentMessage[];
   isThinking: boolean;
-  sendMessage: (text: string) => void;
+  sendMessage: (text: string, options?: { imageId?: string }) => void;
   confirmInventoryDraft?: (draft: InventoryDraftData) => void;
   cancelThinking?: () => void;
 }
@@ -212,19 +212,21 @@ export function useAgent(options: UseAgentOptions): UseAgentReturn {
   );
 
   const sendMessage = useCallback(
-    (text: string) => {
+    (text: string, options?: { imageId?: string }) => {
       const trimmed = text.trim();
-      if (!trimmed) return;
+      if (!trimmed && !options?.imageId) return;
+      const promptForApi = trimmed || (options?.imageId ? "Create listing from this photo" : "");
+      const displayContent = trimmed || (options?.imageId ? "Create listing from this photo" : "");
 
       const userMsg: TextMessage = {
         id: generateId(),
         role: "user",
         type: "text",
-        content: trimmed,
+        content: displayContent,
         createdAt: new Date(),
       };
       setMessages((prev) => [...prev, userMsg]);
-      void persistMessage({ role: "user", type: "text", content: trimmed });
+      void persistMessage({ role: "user", type: "text", content: displayContent });
       setIsThinking(true);
 
       let cancelled = false;
@@ -313,12 +315,19 @@ export function useAgent(options: UseAgentOptions): UseAgentReturn {
         type: m.type,
       }));
 
+      const body: { prompt: string; role: string; priorMessages: unknown[]; imageId?: string } = {
+        prompt: promptForApi,
+        role,
+        priorMessages,
+      };
+      if (options?.imageId) body.imageId = options.imageId;
+
       getAuthHeaders()
         .then((headers) =>
           fetch(`${CFG.API_URL}/api/glean/agent`, {
             method: "POST",
             headers: { "Content-Type": "application/json", ...(headers ?? {}) },
-            body: JSON.stringify({ prompt: trimmed, role, priorMessages }),
+            body: JSON.stringify(body),
           })
         )
         .then((res) => (res.ok ? res.json() : Promise.reject(new Error(res.statusText))))

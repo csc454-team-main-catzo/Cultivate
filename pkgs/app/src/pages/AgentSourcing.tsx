@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useAuth0 } from "@auth0/auth0-react";
 import CFG from "../config";
 import { useUser } from "../providers/userContext";
@@ -16,6 +17,7 @@ interface GleanChatListItem {
 }
 
 export default function AgentSourcing() {
+  const navigate = useNavigate();
   const { isAuthenticated, getAccessTokenSilently } = useAuth0();
   const { user } = useUser();
   const { createListing } = useListingActions();
@@ -23,6 +25,7 @@ export default function AgentSourcing() {
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [, setLoadingChats] = useState(true);
   const [chatLoadError, setChatLoadError] = useState<string | null>(null);
+  const [postError, setPostError] = useState<string | null>(null);
 
   const getAuthHeaders = useCallback(async () => {
     if (!isAuthenticated) return null;
@@ -34,19 +37,32 @@ export default function AgentSourcing() {
 
   async function handlePostInventory(draft: InventoryDraftData) {
     try {
+      const description = (draft.description ?? "").trim() || draft.title || "Listing from Glean.";
       const body = {
         type: "supply" as const,
-        title: draft.title,
-        item: draft.item,
-        description: draft.description ?? "",
+        title: draft.title.trim(),
+        item: draft.item.trim(),
+        description,
         price: draft.pricePerKg,
         qty: draft.weightKg,
-        unit: draft.unit ?? "kg",
+        unit: (draft.unit ?? "kg") as "kg" | "lb" | "count" | "bunch",
         latLng: [0, 0] as [number, number],
+        ...(draft.imageId && { photos: [{ imageId: draft.imageId }] }),
+        ...(draft.deliveryWindow?.startAt &&
+          draft.deliveryWindow?.endAt && {
+            deliveryWindow: {
+              startAt: draft.deliveryWindow.startAt,
+              endAt: draft.deliveryWindow.endAt,
+            },
+          }),
       };
-      await createListing(body);
+      const created = (await createListing(body)) as { _id: string };
+      setPostError(null);
+      navigate(`/listings/${created._id}`);
     } catch (err) {
-      console.error("Failed to post listing:", err);
+      const message = err instanceof Error ? err.message : "Failed to post listing.";
+      console.error("Failed to post listing:", message);
+      setPostError(message);
     }
   }
 
@@ -111,11 +127,17 @@ export default function AgentSourcing() {
           {chatLoadError}
         </div>
       )}
+      {postError && (
+        <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          Failed to post listing: {postError}
+        </div>
+      )}
       <div className="min-h-[520px]">
         <ChatInterface
           role={role}
           chatId={activeChatId}
           onPostInventory={handlePostInventory}
+          onClearPostError={() => setPostError(null)}
         />
       </div>
     </div>

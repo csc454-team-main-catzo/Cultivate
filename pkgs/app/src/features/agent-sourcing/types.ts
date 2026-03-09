@@ -35,6 +35,8 @@ export interface ProductGridItem {
   /** From API: listing photo id; frontend can resolve to imageUrl. */
   imageId?: string;
   imageUrl?: string;
+  /** When the listing is available for delivery/pickup (optional). */
+  deliveryWindow?: { startAt: string; endAt: string };
 }
 
 export interface ProductGridMessage extends AgentMessageBase {
@@ -50,6 +52,10 @@ export interface InventoryDraftData {
   weightKg: number;
   pricePerKg: number;
   unit?: "kg" | "lb" | "count" | "bunch";
+  /** When set, attach this image when posting (from chat upload). */
+  imageId?: string;
+  /** Optional delivery/availability window when posting. */
+  deliveryWindow?: { startAt: string; endAt: string };
 }
 
 export interface InventoryFormMessage extends AgentMessageBase {

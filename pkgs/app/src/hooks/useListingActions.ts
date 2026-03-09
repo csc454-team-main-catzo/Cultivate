@@ -23,6 +23,8 @@ export interface CreateListingBody {
   unit?: "kg" | "lb" | "count" | "bunch";
   latLng: [number, number];
   photos?: Array<{ imageId: string }>;
+  /** Optional delivery/availability window (ISO date strings). */
+  deliveryWindow?: { startAt: string; endAt: string };
 }
 
 export interface UploadImageResponse {
@@ -104,14 +106,19 @@ export function useListingActions() {
       const headers = await getAuthHeaders();
       const res = await fetch(`${CFG.API_URL}/api/listings`, {
         method: "POST",
-        headers,
+        headers: { ...headers, "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-      const data = await res.json().catch(() => ({}));
+      const data = (await res.json().catch(() => ({}))) as { error?: string | { message?: string } };
       if (!res.ok) {
-        throw new Error(
-          (data as { error?: string }).error || "Failed to create listing"
-        );
+        const err = data?.error;
+        const message =
+          typeof err === "string"
+            ? err
+            : err && typeof err === "object" && typeof (err as { message?: string }).message === "string"
+              ? (err as { message: string }).message
+              : "Failed to create listing";
+        throw new Error(message);
       }
       return data;
     },

@@ -35,6 +35,10 @@ export function InventoryDraftCard({
     });
   }
 
+  const hasPhoto = Boolean(draft.imageId);
+  const hasDeliveryWindow = Boolean(draft.deliveryWindow?.startAt && draft.deliveryWindow?.endAt);
+  const isImageOnlyPrompt = hasPhoto && !hasDeliveryWindow;
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 12 }}
@@ -43,6 +47,16 @@ export function InventoryDraftCard({
     >
       <Card>
         <CardContent className="p-5">
+          {!hasPhoto && (
+            <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-3">
+              Add a photo to your listing for better visibility. Use the attachment button in the chat, then describe your produce again.
+            </p>
+          )}
+          {isImageOnlyPrompt && (
+            <p className="text-sm text-zinc-600 bg-zinc-50 border border-zinc-200 rounded-lg px-3 py-2 mb-3">
+              Fill in weight, price, and delivery window below (or say them in chat for next time), then tap Post.
+            </p>
+          )}
           <h3 className="font-semibold text-zinc-900 text-base mb-1">
             {draft.title}
           </h3>
