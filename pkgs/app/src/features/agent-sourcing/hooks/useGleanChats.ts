@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth0 } from "@auth0/auth0-react";
 import CFG from "@/config";
 import type { UserRole } from "../types";
@@ -26,7 +26,17 @@ export interface UseGleanChatsReturn {
 export function useGleanChats(role: UserRole): UseGleanChatsReturn {
   const { isAuthenticated, getAccessTokenSilently } = useAuth0();
   const [chats, setChats] = useState<GleanChatListItem[]>([]);
-  const [activeChatId, setActiveChatId] = useState<string | null>(null);
+  const storageKey = `glean:activeChatId:${role}`;
+  const [activeChatId, _setActiveChatId] = useState<string | null>(() => {
+    try { return sessionStorage.getItem(storageKey) ?? null; } catch { return null; }
+  });
+  const setActiveChatId = useCallback((id: string | null) => {
+    _setActiveChatId(id);
+    try {
+      if (id) sessionStorage.setItem(storageKey, id);
+      else sessionStorage.removeItem(storageKey);
+    } catch { /* ignore */ }
+  }, [storageKey]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const initialLoadDone = useRef(false);
@@ -88,8 +98,10 @@ export function useGleanChats(role: UserRole): UseGleanChatsReturn {
         const roleChats = list.filter((c) => c.role === desiredRole);
         setChats(roleChats);
 
-        if (!initialLoadDone.current && ensured._id) {
-          setActiveChatId(ensured._id);
+        if (!initialLoadDone.current) {
+          const restored = sessionStorage.getItem(storageKey);
+          const validRestored = restored && roleChats.some((c) => c._id === restored);
+          setActiveChatId(validRestored ? restored : ensured._id);
           initialLoadDone.current = true;
         }
       } catch (err) {
