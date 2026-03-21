@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { describeRoute } from "hono-openapi";
 import * as v from "valibot";
+import * as XLSX from "xlsx";
 import { authMiddleware } from "../middleware/auth.js";
 import type { AuthenticatedContext } from "../middleware/types.js";
 import {
@@ -10,6 +11,13 @@ import {
 } from "../services/sourcingOptimizer.js";
 
 const optimization = new Hono<AuthenticatedContext>();
+const SUPPORTED_SHEET_MIME_TYPES = new Set([
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "application/vnd.ms-excel",
+  "text/csv",
+  "application/csv",
+  "text/plain",
+]);
 
 // ---------------------------------------------------------------------------
 // Validation schemas
@@ -49,6 +57,189 @@ async function readJson(c: unknown): Promise<unknown> {
     return null;
   }
 }
+
+function normalizeSheetHeader(value: unknown): string {
+  return String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "");
+}
+
+function parseBooleanCell(value: unknown): boolean | undefined {
+  if (typeof value === "boolean") return value;
+  const normalized = String(value ?? "").trim().toLowerCase();
+  if (!normalized) return undefined;
+  if (["true", "yes", "y", "1"].includes(normalized)) return true;
+  if (["false", "no", "n", "0"].includes(normalized)) return false;
+  return undefined;
+}
+
+function parseNumberCell(value: unknown): number | undefined {
+  if (typeof value === "number") return Number.isFinite(value) ? value : undefined;
+  const normalized = String(value ?? "").trim();
+  if (!normalized) return undefined;
+  const parsed = Number(normalized.replace(/[$,]/g, ""));
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+// ---------------------------------------------------------------------------
+// POST /parse-sheet — Parse uploaded Excel/CSV into sourcing line items
+// ---------------------------------------------------------------------------
+
+optimization.post(
+  "/parse-sheet",
+  describeRoute({
+    operationId: "parseSourcingSheet",
+    summary: "Parse an uploaded Excel/CSV order sheet into structured line items",
+    security: [{ bearerAuth: [] }, {}],
+    responses: {
+      200: { description: "Parsed line items from sheet rows" },
+      400: { description: "Invalid file or no parseable rows" },
+      415: { description: "Unsupported file format" },
+    },
+  }),
+  authMiddleware({ optional: true }),
+  async (c) => {
+    try {
+      let formData: FormData;
+      try {
+        formData = await c.req.formData();
+      } catch {
+        return c.json({ error: "Could not parse multipart form data" }, 400);
+      }
+
+      const file = formData.get("sheet");
+      if (!(file instanceof File)) {
+        return c.json({ error: "Missing sheet file in form-data field 'sheet'" }, 400);
+      }
+
+      const lowerName = file.name.toLowerCase();
+      const byExtension =
+        lowerName.endsWith(".xlsx") ||
+        lowerName.endsWith(".xls") ||
+        lowerName.endsWith(".csv");
+      const byMime = !file.type || SUPPORTED_SHEET_MIME_TYPES.has(file.type);
+      if (!byExtension && !byMime) {
+        return c.json(
+          { error: "Unsupported file format. Use .xlsx, .xls, or .csv" },
+          415
+        );
+      }
+
+      const buffer = Buffer.from(await file.arrayBuffer());
+      const workbook = XLSX.read(buffer, { type: "buffer" });
+      const firstSheetName = workbook.SheetNames[0];
+      if (!firstSheetName) {
+        return c.json({ error: "Sheet is empty" }, 400);
+      }
+
+      const sheet = workbook.Sheets[firstSheetName];
+      const rows = XLSX.utils.sheet_to_json<Array<unknown>>(sheet, {
+        header: 1,
+        blankrows: false,
+        raw: true,
+      });
+      if (!rows.length) {
+        return c.json({ error: "Sheet is empty" }, 400);
+      }
+
+      const headerRow = rows[0] ?? [];
+      const headerMap = new Map<string, number>();
+      headerRow.forEach((h, index) => {
+        const normalized = normalizeSheetHeader(h);
+        if (normalized) headerMap.set(normalized, index);
+      });
+
+      const itemIdx =
+        headerMap.get("item") ??
+        headerMap.get("product") ??
+        headerMap.get("produce") ??
+        headerMap.get("name");
+      const qtyIdx =
+        headerMap.get("qtyneeded") ??
+        headerMap.get("qty") ??
+        headerMap.get("quantity") ??
+        headerMap.get("amount");
+      const unitIdx = headerMap.get("unit");
+      const maxPriceIdx =
+        headerMap.get("maxpriceperunit") ??
+        headerMap.get("maxprice") ??
+        headerMap.get("maxunitprice") ??
+        headerMap.get("pricecap");
+      const acceptsSubIdx =
+        headerMap.get("acceptsubstitutes") ??
+        headerMap.get("substitutes") ??
+        headerMap.get("allowsubstitutes");
+      const notesIdx =
+        headerMap.get("notes") ??
+        headerMap.get("note") ??
+        headerMap.get("requirements");
+
+      if (itemIdx == null || qtyIdx == null) {
+        return c.json(
+          {
+            error:
+              "Could not detect required columns. Include at least 'item' and 'qty'/'quantity'.",
+          },
+          400
+        );
+      }
+
+      const lineItems: Array<{
+        item: string;
+        qtyNeeded: number;
+        unit: "kg" | "lb" | "count" | "bunch";
+        maxPricePerUnit?: number;
+        acceptSubstitutes?: boolean;
+        notes?: string;
+        sourceRow: number;
+      }> = [];
+      for (const [rowIndex, row] of rows.slice(1).entries()) {
+        const item = String(row[itemIdx] ?? "").trim();
+        const qtyNeeded = parseNumberCell(row[qtyIdx]);
+        if (!item || qtyNeeded == null || qtyNeeded <= 0) continue;
+
+        const unitRaw = String(row[unitIdx ?? -1] ?? "kg")
+          .trim()
+          .toLowerCase();
+        const unit = ["kg", "lb", "count", "bunch"].includes(unitRaw)
+          ? (unitRaw as "kg" | "lb" | "count" | "bunch")
+          : "kg";
+
+        lineItems.push({
+          item,
+          qtyNeeded,
+          unit,
+          maxPricePerUnit: parseNumberCell(row[maxPriceIdx ?? -1]),
+          acceptSubstitutes: parseBooleanCell(row[acceptsSubIdx ?? -1]),
+          notes: String(row[notesIdx ?? -1] ?? "").trim() || undefined,
+          sourceRow: rowIndex + 2,
+        });
+      }
+
+      if (lineItems.length === 0) {
+        return c.json(
+          { error: "No valid rows were parsed. Check item/qty columns." },
+          400
+        );
+      }
+
+      return c.json(
+        {
+          filename: file.name,
+          sheet: firstSheetName,
+          parsedCount: lineItems.length,
+          lineItems: lineItems.map(({ sourceRow, ...rest }) => rest),
+          sourceRows: lineItems.map((r) => r.sourceRow),
+        },
+        200
+      );
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Failed to parse sheet";
+      return c.json({ error: message }, 500);
+    }
+  }
+);
 
 // ---------------------------------------------------------------------------
 // POST /optimize — Run the sourcing optimizer

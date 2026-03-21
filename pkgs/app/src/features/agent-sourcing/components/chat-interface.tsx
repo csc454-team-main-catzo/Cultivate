@@ -85,7 +85,7 @@ export function ChatInterface({
   onClearPostError,
 }: ChatInterfaceProps) {
   const { isAuthenticated, getAccessTokenSilently } = useAuth0();
-  const { uploadImage } = useListingActions();
+  const { uploadImage, parseSourcingSheet } = useListingActions();
   const { messages, isThinking, sendMessage, cancelThinking } = useAgent({
     role,
     chatId,
@@ -113,6 +113,21 @@ export function ChatInterface({
       if (!chatId) return;
       onClearPostError?.();
       if (!trimmed && attachments.length === 0) return;
+
+      const isSheetAttachment = (a: Attachment): boolean => {
+        const name = a.name.toLowerCase();
+        const type = (a.contentType ?? "").toLowerCase();
+        return (
+          name.endsWith(".xlsx") ||
+          name.endsWith(".xls") ||
+          name.endsWith(".csv") ||
+          type === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
+          type === "application/vnd.ms-excel" ||
+          type === "text/csv" ||
+          type === "application/csv"
+        );
+      };
+
       let imageId: string | undefined;
       const imageAttachment = attachments.find(
         (a) => a.file && a.contentType?.startsWith("image/")
@@ -125,10 +140,37 @@ export function ChatInterface({
           console.error("Failed to upload chat image:", err);
         }
       }
-      const textToSend = trimmed || (imageId ? "Create listing from this photo" : "");
+
+      let parsedSheetText = "";
+      const sheetAttachment = attachments.find((a) => a.file && isSheetAttachment(a));
+      if (role === "restaurant" && sheetAttachment?.file) {
+        try {
+          const parsed = await parseSourcingSheet(sheetAttachment.file);
+          const lineText = parsed.lineItems
+            .map((li) => {
+              const maxPrice =
+                typeof li.maxPricePerUnit === "number"
+                  ? ` (max $${li.maxPricePerUnit}/${li.unit})`
+                  : "";
+              const notes = li.notes ? `, notes: ${li.notes}` : "";
+              return `${li.qtyNeeded} ${li.unit} ${li.item}${maxPrice}${notes}`;
+            })
+            .join("; ");
+          parsedSheetText = lineText
+            ? `Please optimize this uploaded order sheet into sourcing strategies: ${lineText}`
+            : "";
+        } catch (err) {
+          console.error("Failed to parse uploaded sheet:", err);
+        }
+      }
+
+      const textToSend = [trimmed, parsedSheetText]
+        .map((s) => s.trim())
+        .filter(Boolean)
+        .join("\n\n") || (imageId ? "Create listing from this photo" : "");
       if (textToSend || imageId) sendMessage(textToSend, imageId ? { imageId } : undefined);
     },
-    [chatId, sendMessage, onClearPostError, uploadImage]
+    [chatId, sendMessage, onClearPostError, uploadImage, parseSourcingSheet, role]
   );
 
   const suggestedActions =
