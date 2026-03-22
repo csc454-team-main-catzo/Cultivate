@@ -230,6 +230,18 @@ export function ChatInterface({
           imageId = res.imageId;
         } catch (err) {
           console.error("Failed to upload chat image:", err);
+          const errMsg =
+            err instanceof Error && err.message
+              ? err.message
+              : "Image upload failed. Please try again.";
+          pushMessages({
+            id: generateMsgId(),
+            role: "assistant",
+            type: "text",
+            content: errMsg,
+            createdAt: new Date(),
+          });
+          return;
         }
       }
 

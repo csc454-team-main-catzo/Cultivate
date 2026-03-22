@@ -9,6 +9,7 @@ import CFG from "../config.js";
 import { downloadBufferFromGridFS } from "./gridfs.js";
 import { getTags } from "./visionAzure.js";
 import { matchProduceFromTags, toTitleCase } from "./produceMatcher.js";
+import { evaluateProduceGuard, type ProduceGuardResult } from "./produceGuard.js";
 
 export interface DraftFromImageSuggestedFields {
   title: string;
@@ -19,16 +20,38 @@ export interface DraftFromImageSuggestedFields {
   itemId: string | null;
 }
 
+export interface DraftFromImageResult {
+  fields: DraftFromImageSuggestedFields;
+  guard: ProduceGuardResult;
+  confidence: number;
+}
+
+/** Thrown when the produce guard or low-confidence check rejects the image. */
+export class ImageGuardError extends Error {
+  code: "not_produce" | "low_confidence";
+  feedback: string;
+  confidence: number;
+
+  constructor(code: "not_produce" | "low_confidence", feedback: string, confidence: number) {
+    super(code === "not_produce" ? "Image does not contain produce" : "Low recognition confidence");
+    this.code = code;
+    this.feedback = feedback;
+    this.confidence = confidence;
+  }
+}
+
 const itemMatchThreshold = Number(CFG.ITEM_MATCH_THRESHOLD || 0.6);
 
 /**
  * Get suggested listing fields from an uploaded image (Azure Vision + produce match).
  * Verifies the image is owned by userId. Throws if image not found or not owned.
+ * Throws ImageGuardError if the image fails the produce content guard or
+ * if recognition confidence is too low.
  */
 export async function getDraftSuggestedFieldsFromImage(
   imageId: string,
   userId: string
-): Promise<DraftFromImageSuggestedFields> {
+): Promise<DraftFromImageResult> {
   const imageAsset = await ImageAsset.findById(imageId);
   if (!imageAsset) {
     const err = new Error("Image asset not found") as Error & { statusCode?: number };
@@ -46,7 +69,30 @@ export async function getDraftSuggestedFieldsFromImage(
   );
 
   const tags = await getTags(imageBuffer);
+
+  const guard = evaluateProduceGuard(tags);
+  if (!guard.isProduce) {
+    throw new ImageGuardError(
+      "not_produce",
+      guard.feedback ?? "This image does not appear to contain farm produce.",
+      guard.produceConfidence,
+    );
+  }
+
   const match = await matchProduceFromTags(tags, itemMatchThreshold);
+
+  if (match.confidence < CFG.LOW_CONFIDENCE_THRESHOLD) {
+    throw new ImageGuardError(
+      "low_confidence",
+      [
+        "We detected produce but couldn't identify the specific item with enough certainty.",
+        "Try a closer, well-lit photo showing only one type of produce.",
+        "Avoid busy backgrounds, mixed piles, or images taken from far away.",
+      ].join(" "),
+      match.confidence,
+    );
+  }
+
   const itemName = match.itemName ?? "produce";
   const suggestedUnit = match.selected?.defaultUnit ?? null;
   const suggestedPriceHint = match.selected?.priceHints?.[0];
@@ -63,11 +109,15 @@ export async function getDraftSuggestedFieldsFromImage(
     : "Fresh local produce. Message for pickup window + partial fulfillment.";
 
   return {
-    title,
-    item: itemName,
-    description,
-    suggestedPricePerKg,
-    suggestedUnit: suggestedUnit ?? null,
-    itemId: match.itemId ?? null,
+    fields: {
+      title,
+      item: itemName,
+      description,
+      suggestedPricePerKg,
+      suggestedUnit: suggestedUnit ?? null,
+      itemId: match.itemId ?? null,
+    },
+    guard,
+    confidence: match.confidence,
   };
 }

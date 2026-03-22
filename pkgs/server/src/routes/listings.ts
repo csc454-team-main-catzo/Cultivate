@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { describeRoute, resolver, validator } from "hono-openapi";
 import { authMiddleware } from "../middleware/auth.js";
+import { rateLimiter } from "../middleware/rateLimit.js";
 import type { AuthenticatedContext } from "../middleware/types.js";
 import DraftSuggestion from "../models/DraftSuggestion.js";
 import ImageAsset from "../models/ImageAsset.js";
@@ -10,6 +11,7 @@ import CFG from "../config.js";
 import { downloadBufferFromGridFS } from "../services/gridfs.js";
 import { matchProduceFromTags, toTitleCase } from "../services/produceMatcher.js";
 import { getTags, type AzureVisionTag } from "../services/visionAzure.js";
+import { evaluateProduceGuard } from "../services/produceGuard.js";
 import { logJson } from "../utils/log.js";
 import {
   DraftFromImageResponseSchema,
@@ -196,9 +198,16 @@ listings.post(
       401: { description: "Unauthorized" },
       403: { description: "Forbidden" },
       404: { description: "Image not found" },
+      422: { description: "Image rejected by content guard (not produce or low confidence)" },
+      429: { description: "Rate limit exceeded" },
     },
   }),
   authMiddleware(),
+  rateLimiter({
+    max: CFG.RATE_LIMIT_DRAFT_MAX,
+    windowMs: CFG.RATE_LIMIT_DRAFT_WINDOW_MS,
+    message: "Too many draft requests. Please try again shortly.",
+  }),
   validator("json", DraftFromImageSchema),
   async (c) => {
     try {
@@ -225,12 +234,59 @@ listings.post(
         return c.json({ error: "vision_failed" }, 500);
       }
 
+      // --- Produce content guard ---
+      const guard = evaluateProduceGuard(tags);
+      if (!guard.isProduce) {
+        logJson("vision_guard_rejected", {
+          userId,
+          imageId,
+          produceConfidence: guard.produceConfidence,
+          reason: guard.rejectionReason,
+          tagsTop10: tags.slice(0, 10),
+        });
+        return c.json(
+          {
+            error: "not_produce",
+            rejectionReason: guard.rejectionReason,
+            feedback: guard.feedback,
+            exampleImageHint: "Upload a clear photo of raw fruits or vegetables on a plain surface.",
+          },
+          422
+        );
+      }
+
       const reasons = tags.slice(0, 5).map((tag) => ({
         desc: tag.name,
         score: tag.confidence,
       }));
 
       const match = await matchProduceFromTags(tags, itemMatchThreshold);
+
+      // --- Low-confidence guard: don't guess if we can't identify the item ---
+      if (match.confidence < CFG.LOW_CONFIDENCE_THRESHOLD) {
+        logJson("vision_low_confidence", {
+          userId,
+          imageId,
+          confidence: match.confidence,
+          threshold: CFG.LOW_CONFIDENCE_THRESHOLD,
+          topCandidates: match.topCandidates.slice(0, 5),
+          tagsTop10: tags.slice(0, 10),
+        });
+        return c.json(
+          {
+            error: "low_confidence",
+            confidence: match.confidence,
+            feedback: [
+              "We detected produce but couldn't identify the specific item with enough certainty.",
+              "Try a closer, well-lit photo showing only one type of produce.",
+              "Avoid busy backgrounds, mixed piles, or images taken from far away.",
+            ].join(" "),
+            exampleImageHint: "Place the produce on a plain surface, fill the frame, and ensure good lighting.",
+          },
+          422
+        );
+      }
+
       const itemName = match.itemName;
       const suggestedUnit = match.selected?.defaultUnit || null;
       const suggestedPriceHint = match.selected?.priceHints?.[0];
@@ -284,6 +340,9 @@ listings.post(
         },
         azure: {
           tagsTop20: tags.slice(0, 20),
+        },
+        guard: {
+          produceConfidence: guard.produceConfidence,
         },
         match: {
           threshold: match.threshold,

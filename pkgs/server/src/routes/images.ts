@@ -2,10 +2,12 @@ import { Hono } from "hono";
 import { describeRoute } from "hono-openapi";
 import sharp from "sharp";
 import { authMiddleware } from "../middleware/auth.js";
+import { rateLimiter } from "../middleware/rateLimit.js";
 import type { AuthenticatedContext } from "../middleware/types.js";
 import ImageAsset from "../models/ImageAsset.js";
 import { downloadBufferFromGridFS, uploadBufferToGridFS } from "../services/gridfs.js";
 import { logJson } from "../utils/log.js";
+import CFG from "../config.js";
 
 const images = new Hono<AuthenticatedContext>();
 const SUPPORTED_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
@@ -47,9 +49,16 @@ images.post(
       201: { description: "Uploaded image metadata" },
       400: { description: "Invalid file" },
       401: { description: "Unauthorized" },
+      413: { description: "File too large" },
+      429: { description: "Rate limit exceeded" },
     },
   }),
   authMiddleware(),
+  rateLimiter({
+    max: CFG.RATE_LIMIT_UPLOAD_MAX,
+    windowMs: CFG.RATE_LIMIT_UPLOAD_WINDOW_MS,
+    message: "Too many upload requests. Please try again shortly.",
+  }),
   async (c) => {
     try {
       const userId = c.get("userId");
@@ -64,6 +73,12 @@ images.post(
       const image = formData.get("image");
       if (!(image instanceof File)) {
         return c.json({ error: "Missing image file in form-data field 'image'" }, 400);
+      }
+      if (image.size > CFG.MAX_UPLOAD_SIZE_BYTES) {
+        return c.json(
+          { error: `Image too large. Maximum size is ${Math.round(CFG.MAX_UPLOAD_SIZE_BYTES / 1024 / 1024)}MB.` },
+          413
+        );
       }
       if (image.type && !SUPPORTED_MIME_TYPES.has(image.type)) {
         return c.json(

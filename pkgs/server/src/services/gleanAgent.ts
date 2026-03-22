@@ -11,7 +11,7 @@
 import OpenAIModule from "openai";
 import Listing from "../models/Listing.js";
 import { getProduceMatchTerms } from "./produceMatcher.js";
-import { getDraftSuggestedFieldsFromImage } from "./draftFromImage.js";
+import { getDraftSuggestedFieldsFromImage, ImageGuardError } from "./draftFromImage.js";
 
 /** Minimal type for OpenAI-compatible chat client (avoids using package namespace as type). */
 interface LLMClient {
@@ -403,12 +403,19 @@ export async function runGleanAgent(req: GleanAgentRequest): Promise<GleanAgentR
 
   // Farmer with image: Azure CV draft + merge text (price, qty, delivery window)
   if (role === "farmer" && req.imageId && req.userId) {
-    let imageFields: Awaited<ReturnType<typeof getDraftSuggestedFieldsFromImage>> | null = null;
+    let imageResult: Awaited<ReturnType<typeof getDraftSuggestedFieldsFromImage>> | null = null;
     try {
-      imageFields = await getDraftSuggestedFieldsFromImage(req.imageId, req.userId);
-    } catch {
+      imageResult = await getDraftSuggestedFieldsFromImage(req.imageId, req.userId);
+    } catch (err) {
+      if (err instanceof ImageGuardError) {
+        return {
+          introText: err.feedback,
+          payload: null,
+        };
+      }
       // 404/403 or vision failure: fall through to text-only draft
     }
+    const imageFields = imageResult?.fields ?? null;
     if (imageFields && client) {
       try {
         const res = await client.chat.completions.create({
@@ -454,7 +461,6 @@ export async function runGleanAgent(req: GleanAgentRequest): Promise<GleanAgentR
         const msg = err instanceof Error ? err.message : String(err);
         console.error("[Glean] Extract-from-text (with image) failed:", msg);
       }
-      // LLM extract failed: still return draft from image with defaults
       const draft: DraftListing = {
         title: imageFields.title,
         item: imageFields.item,
@@ -470,7 +476,6 @@ export async function runGleanAgent(req: GleanAgentRequest): Promise<GleanAgentR
       };
     }
     if (imageFields && !client) {
-      // Image draft ok but no LLM: return draft with defaults
       const draft: DraftListing = {
         title: imageFields.title,
         item: imageFields.item,
