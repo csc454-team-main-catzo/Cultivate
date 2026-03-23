@@ -1,6 +1,6 @@
 import { useRef, useEffect, useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Tractor, ChefHat, Bot, User, DollarSign, Zap, Award, LayoutGrid, Star, CheckCircle2 } from "lucide-react";
+import { Tractor, ChefHat, Bot, User, DollarSign, Zap, Award, LayoutGrid, Star, CheckCircle2, AlertTriangle, ChevronRight, Info, PackageCheck } from "lucide-react";
 import { useAgent } from "../hooks/useAgent";
 import { getAgentTheme } from "../lib/theme";
 import type {
@@ -12,6 +12,7 @@ import type {
   StrategyAllocation,
   SourcingPlanData,
   ProductGridItem,
+  TextMessage,
 } from "../types";
 import { InventoryDraftCard } from "./InventoryDraftCard";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -28,6 +29,9 @@ import { InteractiveCheckout, type CartItem, type Product as CheckoutProduct, ty
 import { CheckoutForm } from "@/components/ui/checkout-form";
 import { OrderConfirmationCard } from "@/components/ui/order-confirmation-card";
 import { cn } from "@/lib/utils";
+
+/** First line of assistant messages that represent a completed mock checkout (used for styling). */
+const MOCK_ORDER_FIRST_LINE = "Mock order placed";
 
 /* ------------------------------------------------------------------ */
 /*  Parse "2kg of tomatoes" / "3 lb greens" from the user query        */
@@ -91,7 +95,7 @@ export function ChatInterface({
 }: ChatInterfaceProps) {
   const { isAuthenticated, getAccessTokenSilently } = useAuth0();
   const { uploadImage, parseSourcingSheet, runOptimizer } = useListingActions();
-  const { messages, isThinking, sendMessage, cancelThinking, pushMessages, setThinking } = useAgent({
+  const { messages, isThinking, sendMessage, cancelThinking, pushMessages, setThinking, persistMessage } = useAgent({
     role,
     chatId,
   });
@@ -105,6 +109,10 @@ export function ChatInterface({
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [checkoutTotal, setCheckoutTotal] = useState<number | null>(null);
+  /** Echoed on confirmation card after mock checkout (cart is cleared, so total is stored here). */
+  const [lastPlacedOrder, setLastPlacedOrder] = useState<{ orderId: string; total: number } | null>(
+    null,
+  );
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
@@ -113,6 +121,53 @@ export function ChatInterface({
   const AgentIcon = role === "farmer" ? Tractor : ChefHat;
 
   const generateMsgId = () => `msg-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+
+  const handleMockPlaceOrder = useCallback(() => {
+    const snapshot = [...cart];
+    if (snapshot.length === 0) return;
+
+    const total =
+      checkoutTotal ??
+      Math.round(snapshot.reduce((s, i) => s + i.price * i.quantity, 0) * 100) / 100;
+    const orderId = `MOCK-${Math.floor(10000000 + Math.random() * 90000000)}`;
+
+    const lines = snapshot.map((item) => {
+      const u = item.unit ?? "kg";
+      const qtyStr =
+        u === "count" || u === "bunch"
+          ? String(Math.round(item.quantity))
+          : item.quantity.toFixed(2);
+      const unitLabel = u === "count" ? "ct" : u === "bunch" ? "bunch" : u;
+      const lineTotal = (item.price * item.quantity).toFixed(2);
+      return `• ${item.name} — ${qtyStr} ${unitLabel} — $${lineTotal}`;
+    });
+
+    const content = [
+      MOCK_ORDER_FIRST_LINE,
+      "",
+      `Order ID: ${orderId}`,
+      `Total: $${total.toFixed(2)}`,
+      "",
+      "Items:",
+      ...lines,
+      "",
+      "This is a demo checkout; no real payment was processed.",
+    ].join("\n");
+
+    const msg: TextMessage = {
+      id: generateMsgId(),
+      role: "assistant",
+      type: "text",
+      content,
+      createdAt: new Date(),
+    };
+    pushMessages(msg);
+    void persistMessage({ role: "assistant", type: "text", content });
+
+    setLastPlacedOrder({ orderId, total });
+    setShowConfirmation(true);
+    setCart([]);
+  }, [cart, checkoutTotal, pushMessages, persistMessage]);
 
   const handleSendMessage = useCallback(
     async ({ input, attachments }: { input: string; attachments: Attachment[] }) => {
@@ -134,26 +189,30 @@ export function ChatInterface({
       const sheetAttachment = attachments.find((a) => a.file && isSheetAttachment(a));
 
       if (role === "restaurant" && sheetAttachment?.file) {
+        const userContent = trimmed || `Uploaded ${sheetAttachment.name} for optimization`;
         const userMsg: AgentMessage = {
           id: generateMsgId(),
           role: "user",
           type: "text",
-          content: trimmed || `Uploaded ${sheetAttachment.name} for optimization`,
+          content: userContent,
           createdAt: new Date(),
         };
         pushMessages(userMsg);
+        void persistMessage({ role: "user", type: "text", content: userContent });
         setThinking(true);
 
         try {
           const parsed = await parseSourcingSheet(sheetAttachment.file);
           if (!parsed.lineItems.length) {
+            const parseErrorContent = "Could not parse any valid items from the CSV. Please check the file has 'item' and 'qty' columns.";
             pushMessages({
               id: generateMsgId(),
               role: "assistant",
               type: "text",
-              content: "Could not parse any valid items from the CSV. Please check the file has 'item' and 'qty' columns.",
+              content: parseErrorContent,
               createdAt: new Date(),
             });
+            void persistMessage({ role: "assistant", type: "text", content: parseErrorContent });
             setThinking(false);
             return;
           }
@@ -171,13 +230,21 @@ export function ChatInterface({
 
           const options = planData.strategyOptions ?? [];
           if (options.length === 0) {
+            const headline = planData.summary || "No fulfillment strategies could be generated.";
+            const tips = [
+              "Check that suppliers have listed items matching your order",
+              "Try broadening your order with more common produce names",
+              "Upload a different CSV with adjusted quantities",
+            ];
+            const noStratContent = `${headline}\n\nThis usually means there aren't enough supply listings to match your order. Here are some things to try:\n\n${tips.map((t) => `• ${t}`).join("\n")}`;
             pushMessages({
               id: generateMsgId(),
               role: "assistant",
               type: "text",
-              content: planData.summary || "No fulfillment strategies could be generated. There may not be enough supply listings to match your order.",
+              content: noStratContent,
               createdAt: new Date(),
             });
+            void persistMessage({ role: "assistant", type: "text", content: noStratContent });
             setThinking(false);
             return;
           }
@@ -205,15 +272,24 @@ export function ChatInterface({
           };
 
           pushMessages(strategyMsg);
+          void persistMessage({
+            role: "assistant",
+            type: "strategy_options",
+            options,
+            recommendedStrategyId: planData.recommendedStrategyId ?? null,
+            sourcingPlan,
+          });
         } catch (err) {
           console.error("Optimization failed:", err);
+          const failContent = `Optimization failed: ${err instanceof Error ? err.message : "Unknown error"}. You can try again or describe your order in text.`;
           pushMessages({
             id: generateMsgId(),
             role: "assistant",
             type: "text",
-            content: `Optimization failed: ${err instanceof Error ? err.message : "Unknown error"}. You can try again or describe your order in text.`,
+            content: failContent,
             createdAt: new Date(),
           });
+          void persistMessage({ role: "assistant", type: "text", content: failContent });
         } finally {
           setThinking(false);
         }
@@ -236,7 +312,7 @@ export function ChatInterface({
       const textToSend = trimmed || (imageId ? "Create listing from this photo" : "");
       if (textToSend || imageId) sendMessage(textToSend, imageId ? { imageId } : undefined);
     },
-    [chatId, sendMessage, onClearPostError, uploadImage, parseSourcingSheet, runOptimizer, role, pushMessages, setThinking]
+    [chatId, sendMessage, onClearPostError, uploadImage, parseSourcingSheet, runOptimizer, role, pushMessages, setThinking, persistMessage]
   );
 
   const handleSelectStrategy = useCallback(
@@ -259,9 +335,10 @@ export function ChatInterface({
           ? `${CFG.API_URL}/api/images/${alloc.supplier.imageId}`
           : undefined,
         deliveryWindow: alloc.deliveryWindow,
+        matchType: alloc.matchType,
+        matchScore: alloc.matchScore,
       }));
 
-      // Auto-populate cart with the strategy's allocated quantities
       const autoCart: CartItem[] = items.map((item, index): CartItem => ({
         id: item.id || `agent-${index}`,
         listingId: item.listingId || item.id,
@@ -279,12 +356,17 @@ export function ChatInterface({
       }));
       setCart(autoCart);
 
+      const unfulfillable = msg.sourcingPlan.unfulfillable.length > 0
+        ? msg.sourcingPlan.unfulfillable
+        : undefined;
+
+      const selectContent = `Here are the allocations for the "${strat.name}" strategy:`;
       pushMessages(
         {
           id: generateMsgId(),
           role: "assistant",
           type: "text",
-          content: `Here are the allocations for the "${strat.name}" strategy:`,
+          content: selectContent,
           createdAt: new Date(),
         },
         {
@@ -293,11 +375,14 @@ export function ChatInterface({
           type: "product_grid",
           query: "",
           items,
+          unfulfillable,
           createdAt: new Date(),
         }
       );
+      void persistMessage({ role: "assistant", type: "text", content: selectContent });
+      void persistMessage({ role: "assistant", type: "product_grid", items });
     },
-    [pushMessages]
+    [pushMessages, persistMessage]
   );
 
   const suggestedActions =
@@ -485,6 +570,7 @@ export function ChatInterface({
               setShowConfirmation(false);
               setIsCheckoutOpen(false);
               setCheckoutTotal(null);
+              setLastPlacedOrder(null);
             }}
           />
           <div className="relative z-10 w-full max-w-md px-4">
@@ -504,27 +590,23 @@ export function ChatInterface({
                     setIsCheckoutOpen(false);
                     setShowConfirmation(false);
                     setCheckoutTotal(null);
+                    setLastPlacedOrder(null);
                   }}
-                  onPlaceOrder={() => {
-                    setShowConfirmation(true);
-                    // Clear cart after a mock order is placed
-                    setCart([]);
-                  }}
+                  onPlaceOrder={handleMockPlaceOrder}
                 />
               </div>
             ) : (
               <OrderConfirmationCard
-                orderId="MOCK-57625869"
+                orderId={lastPlacedOrder?.orderId ?? "MOCK-00000000"}
                 paymentMethod="Mock payment"
                 dateTime={new Date().toLocaleString()}
-                totalAmount={`$${(
-                  checkoutTotal ?? cart.reduce((sum, item) => sum + item.price * item.quantity, 0)
-                ).toFixed(2)}`}
+                totalAmount={`$${(lastPlacedOrder?.total ?? 0).toFixed(2)}`}
                 title="Your mock order has been placed"
                 buttonText="Back to Glean"
                 onClose={() => {
                   setShowConfirmation(false);
                   setIsCheckoutOpen(false);
+                  setLastPlacedOrder(null);
                 }}
               />
             )}
@@ -620,7 +702,17 @@ function StrategyCard({
         </div>
         <div>
           <span className="text-zinc-400">Coverage</span>
-          <span className="ml-1 font-medium text-zinc-700">{m.coveragePercent.toFixed(0)}%</span>
+          <span className={cn(
+            "ml-1 font-medium inline-flex items-center gap-0.5",
+            m.coveragePercent >= 100
+              ? "text-emerald-600"
+              : m.coveragePercent >= 80
+                ? "text-amber-600"
+                : "text-red-600",
+          )}>
+            {m.coveragePercent < 100 && <AlertTriangle className="inline h-3 w-3" />}
+            {m.coveragePercent.toFixed(0)}%
+          </span>
         </div>
         <div>
           <span className="text-zinc-400">Suppliers</span>
@@ -656,6 +748,7 @@ function MessageBubble({
 }: MessageBubbleProps) {
   const isUser = message.role === "user";
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [isReasoningOpen, setIsReasoningOpen] = useState(false);
 
   if (isUser) {
     const content = message.type === "text" ? message.content : "";
@@ -684,20 +777,84 @@ function MessageBubble({
       </Avatar>
       <div className="min-w-0 flex-1 space-y-3">
         {message.type === "text" && (
-          <div className="rounded-2xl rounded-bl-md px-4 py-2.5 bg-zinc-100 text-zinc-900 text-sm">
-            <p className="whitespace-pre-wrap break-words">{message.content}</p>
-            {message.isStreaming && (
-              <span className="inline-block w-2 h-4 ml-0.5 bg-zinc-400 animate-pulse align-middle rounded" />
-            )}
-          </div>
+          message.content.startsWith(MOCK_ORDER_FIRST_LINE) ? (
+            <div className="rounded-2xl rounded-bl-md border border-emerald-200 bg-emerald-50/90 px-4 py-3 text-sm text-zinc-900 shadow-sm">
+              <div className="flex items-start gap-2.5">
+                <PackageCheck className="h-5 w-5 shrink-0 text-emerald-600 mt-0.5" aria-hidden />
+                <p className="whitespace-pre-wrap break-words leading-relaxed">{message.content}</p>
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-2xl rounded-bl-md px-4 py-2.5 bg-zinc-100 text-zinc-900 text-sm">
+              <p className="whitespace-pre-wrap break-words">{message.content}</p>
+              {message.isStreaming && (
+                <span className="inline-block w-2 h-4 ml-0.5 bg-zinc-400 animate-pulse align-middle rounded" />
+              )}
+            </div>
+          )
         )}
         {message.type === "strategy_options" && (() => {
           const stratMsg = message as StrategyOptionsMessage;
+          const fmtQty = (n: number) => n.toFixed(2);
           return (
             <div className="rounded-2xl rounded-bl-md border border-zinc-200 bg-zinc-50 px-3 py-3 sm:px-4 sm:py-4 space-y-3">
               {stratMsg.sourcingPlan.summary && (
                 <p className="text-sm text-zinc-700">{stratMsg.sourcingPlan.summary}</p>
               )}
+
+              {stratMsg.sourcingPlan.unfulfillable.length > 0 && (
+                <div className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2.5 space-y-1.5">
+                  <div className="flex items-center gap-1.5 text-xs font-medium text-amber-800">
+                    <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                    Some items cannot be fully fulfilled
+                  </div>
+                  <div className="text-xs text-amber-700 space-y-0.5 pl-5">
+                    {stratMsg.sourcingPlan.unfulfillable.map((u, i) => (
+                      <p key={i}>
+                        <span className="font-medium">{u.lineItemName}</span>
+                        {u.qtyAvailable === 0
+                          ? " — no matching suppliers found"
+                          : ` — ${fmtQty(u.qtyAvailable)} of ${fmtQty(u.qtyNeeded)} available`}
+                      </p>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {stratMsg.sourcingPlan.reasoning && (
+                <div>
+                  <button
+                    type="button"
+                    onClick={() => setIsReasoningOpen((v) => !v)}
+                    className="flex items-center gap-1.5 text-xs text-zinc-500 hover:text-zinc-700 transition-colors"
+                  >
+                    <ChevronRight
+                      className={cn(
+                        "h-3.5 w-3.5 transition-transform duration-150",
+                        isReasoningOpen && "rotate-90",
+                      )}
+                    />
+                    <Info className="h-3.5 w-3.5" />
+                    Why this recommendation?
+                  </button>
+                  <AnimatePresence>
+                    {isReasoningOpen && (
+                      <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: "auto" }}
+                        exit={{ opacity: 0, height: 0 }}
+                        transition={{ duration: 0.15 }}
+                        className="overflow-hidden"
+                      >
+                        <div className="mt-2 ml-5 rounded-lg bg-zinc-100 px-3 py-2 text-xs text-zinc-600">
+                          <p className="whitespace-pre-wrap">{stratMsg.sourcingPlan.reasoning}</p>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+              )}
+
               <p className="text-xs font-medium text-zinc-500 uppercase tracking-wide">
                 Select a sourcing strategy
               </p>
@@ -717,23 +874,32 @@ function MessageBubble({
                     />
                   ))}
               </div>
-              {stratMsg.sourcingPlan.unfulfillable.length > 0 && (
-                <div className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-700 space-y-1">
-                  <p className="font-medium">Some items can't be fully fulfilled:</p>
-                  {stratMsg.sourcingPlan.unfulfillable.map((u, i) => (
-                    <p key={i}>
-                      {u.lineItemName}: need {u.qtyNeeded}, available {u.qtyAvailable} — {u.reason}
-                    </p>
-                  ))}
-                </div>
-              )}
             </div>
           );
         })()}
         {message.type === "product_grid" && (() => {
           const requested = parseRequestedAmounts(message.query);
+          const fmtQty = (n: number) => n.toFixed(2);
           return (
-          <div className="rounded-2xl rounded-bl-md border border-zinc-200 bg-white px-1 py-1.5 sm:px-3 sm:py-3">
+          <div className="rounded-2xl rounded-bl-md border border-zinc-200 bg-white px-1 py-1.5 sm:px-3 sm:py-3 space-y-3">
+            {message.unfulfillable && message.unfulfillable.length > 0 && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 space-y-1.5">
+                <div className="flex items-center gap-1.5 text-xs font-medium text-amber-800">
+                  <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                  Items not fully sourced
+                </div>
+                <div className="text-xs text-amber-700 space-y-0.5 pl-5">
+                  {message.unfulfillable.map((u, i) => (
+                    <p key={i}>
+                      <span className="font-medium">{u.lineItemName}</span>
+                      {u.qtyAvailable === 0
+                        ? " — no suppliers found"
+                        : ` — ${fmtQty(u.qtyAvailable)} of ${fmtQty(u.qtyNeeded)} sourced`}
+                    </p>
+                  ))}
+                </div>
+              </div>
+            )}
             <InteractiveCheckout
               products={message.items.map((item, index): CheckoutProduct => {
                 const match = matchRequestedAmount(item.title, item.item, requested);
@@ -749,8 +915,12 @@ function MessageBubble({
                   color: item.farmerName ?? "",
                   unit: (item.unit as ProductUnit) ?? "kg",
                   availableQty: item.qty,
-                  ...(match ? { requestedQty: match.qty, requestedUnit: match.unit } : {}),
+                  ...(match
+                    ? { requestedQty: match.qty, requestedUnit: match.unit }
+                    : { requestedQty: item.qty }),
                   deliveryWindow: item.deliveryWindow,
+                  matchType: item.matchType,
+                  matchScore: item.matchScore,
                 };
               })}
               cart={cart}
