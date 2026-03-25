@@ -9,6 +9,7 @@ import {
 } from "../hooks/useListingActions";
 import GhostTextarea from "../components/GhostTextarea";
 import { getListingDescriptionSuggestion } from "../utils/suggestions";
+import { convertPriceBetweenUnits } from "../utils/unitPrice";
 
 interface ListingFormValues {
   itemId: string;
@@ -28,7 +29,7 @@ const INITIAL_FORM: ListingFormValues = {
   title: "",
   description: "",
   qty: "",
-  unit: "",
+  unit: "kg",
   price: "",
   photos: [],
   attributes: undefined,
@@ -68,6 +69,25 @@ export default function NewListing() {
 
   function updateField(field: keyof ListingFormValues, value: string) {
     setForm((prev) => ({ ...prev, [field]: value }));
+    setError(null);
+  }
+
+  function handleUnitChange(newUnit: string) {
+    setForm((prev) => {
+      const oldU = prev.unit.trim().toLowerCase();
+      const priceNum = Number(prev.price);
+      let nextPrice = prev.price;
+      if (
+        prev.unit &&
+        newUnit &&
+        Number.isFinite(priceNum) &&
+        priceNum >= 0
+      ) {
+        const converted = convertPriceBetweenUnits(priceNum, oldU, newUnit.trim().toLowerCase());
+        if (converted != null) nextPrice = converted.toFixed(2);
+      }
+      return { ...prev, unit: newUnit, price: nextPrice };
+    });
     setError(null);
   }
 
@@ -174,28 +194,54 @@ export default function NewListing() {
 
   function applyDraftSafeOnly(suggestedFields: DraftSuggestedFields) {
     const suggestedItemName = suggestedFields.itemName?.trim() || "";
-    const suggestedUnit = suggestedFields.unit?.trim() || "";
-    setForm((prev) => ({
-      ...prev,
-      itemId: suggestedFields.itemId || prev.itemId,
-      itemName: suggestedItemName || prev.itemName,
-      title:
-        suggestedFields.title ??
-        (suggestedItemName
-          ? `Fresh ${toTitleCase(suggestedItemName)}`
-          : "Fresh local produce"),
-      description: suggestedFields.description || prev.description,
-      price:
+    const draftUnit =
+      suggestedFields.unit?.trim() || suggestedFields.priceUnit?.trim() || "";
+    setForm((prev) => {
+      const chosenUnit = prev.unit.trim() || draftUnit;
+      const fromUnit = (
+        suggestedFields.unit ||
+        suggestedFields.priceUnit ||
+        "kg"
+      )
+        .trim()
+        .toLowerCase();
+      const toUnit = chosenUnit.trim().toLowerCase();
+
+      let priceStr = prev.price;
+      if (
         typeof suggestedFields.price === "number" &&
         Number.isFinite(suggestedFields.price)
-          ? suggestedFields.price.toFixed(2)
-          : prev.price,
-      unit: suggestedUnit || prev.unit,
-      attributes:
-        suggestedFields.attributes !== undefined
-          ? suggestedFields.attributes
-          : prev.attributes,
-    }));
+      ) {
+        if (toUnit && fromUnit !== toUnit) {
+          const c = convertPriceBetweenUnits(
+            suggestedFields.price,
+            fromUnit,
+            toUnit
+          );
+          priceStr = (c ?? suggestedFields.price).toFixed(2);
+        } else {
+          priceStr = suggestedFields.price.toFixed(2);
+        }
+      }
+
+      return {
+        ...prev,
+        itemId: suggestedFields.itemId || prev.itemId,
+        itemName: suggestedItemName || prev.itemName,
+        title:
+          suggestedFields.title ??
+          (suggestedItemName
+            ? `Fresh ${toTitleCase(suggestedItemName)}`
+            : "Fresh local produce"),
+        description: suggestedFields.description || prev.description,
+        price: priceStr,
+        unit: chosenUnit,
+        attributes:
+          suggestedFields.attributes !== undefined
+            ? suggestedFields.attributes
+            : prev.attributes,
+      };
+    });
     setDraft(null);
   }
 
@@ -205,6 +251,26 @@ export default function NewListing() {
     const all = [...fromDraft, ...DEFAULT_UNIT_OPTIONS];
     return Array.from(new Set(all.filter(Boolean)));
   }, [draft?.suggestedFields.unitOptions]);
+
+  /** AI draft price shown in the unit the user selected (kg ↔ lb only). */
+  const draftSuggestedDisplay = useMemo(() => {
+    if (!draft || typeof draft.suggestedFields.price !== "number") return null;
+    const raw = draft.suggestedFields.price;
+    const unitHint =
+      draft.suggestedFields.unit?.trim() ||
+      draft.suggestedFields.priceUnit?.trim() ||
+      "kg";
+    const from = unitHint.toLowerCase();
+    const to = form.unit.trim().toLowerCase();
+    if (!form.unit || from === to) {
+      return { price: raw, unitLabel: unitHint, adjusted: false };
+    }
+    const converted = convertPriceBetweenUnits(raw, from, to);
+    if (converted == null) {
+      return { price: raw, unitLabel: unitHint, adjusted: false };
+    }
+    return { price: converted, unitLabel: form.unit, adjusted: true };
+  }, [draft, form.unit]);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -365,13 +431,19 @@ export default function NewListing() {
                 <span className="font-medium">Description:</span>{" "}
                 {draft.suggestedFields.description}
               </p>
-              {typeof draft.suggestedFields.price === "number" && (
+              {draftSuggestedDisplay && (
                 <p>
                   <span className="font-medium">Suggested price:</span>{" "}
-                  ${draft.suggestedFields.price.toFixed(2)}
-                  {draft.suggestedFields.unit
-                    ? ` per ${draft.suggestedFields.unit}`
+                  ${draftSuggestedDisplay.price.toFixed(2)}
+                  {draftSuggestedDisplay.unitLabel
+                    ? ` per ${draftSuggestedDisplay.unitLabel}`
                     : ""}
+                  {draftSuggestedDisplay.adjusted && (
+                    <span className="text-zinc-500">
+                      {" "}
+                      (adjusted for your unit choice)
+                    </span>
+                  )}
                 </p>
               )}
             </div>
@@ -462,7 +534,7 @@ export default function NewListing() {
           </label>
           <select
             value={form.unit}
-            onChange={(e) => updateField("unit", e.target.value)}
+            onChange={(e) => handleUnitChange(e.target.value)}
             className="input-field"
           >
             <option value="">Select a unit</option>

@@ -8,14 +8,20 @@ import ImageAsset from "../models/ImageAsset.js";
 import CFG from "../config.js";
 import { downloadBufferFromGridFS } from "./gridfs.js";
 import { getTags } from "./visionAzure.js";
-import { matchProduceFromTags, toTitleCase } from "./produceMatcher.js";
+import {
+  buildDraftPriceSuggestionTrace,
+  matchProduceFromTags,
+  selectPrimaryPriceHint,
+  toTitleCase,
+} from "./produceMatcher.js";
 
 export interface DraftFromImageSuggestedFields {
   title: string;
   item: string;
   description: string;
   suggestedPricePerKg: number | null;
-  suggestedUnit: string | null;
+  /** Listing unit; defaults to kg when taxonomy has no defaultUnit. */
+  suggestedUnit: string;
   itemId: string | null;
 }
 
@@ -47,9 +53,14 @@ export async function getDraftSuggestedFieldsFromImage(
 
   const tags = await getTags(imageBuffer);
   const match = await matchProduceFromTags(tags, itemMatchThreshold);
+  const priceSuggestionTrace = buildDraftPriceSuggestionTrace(match);
+  console.log(
+    "[getDraftSuggestedFieldsFromImage] price_suggestion_trace\n%s",
+    JSON.stringify(priceSuggestionTrace, null, 2)
+  );
   const itemName = match.itemName ?? "produce";
-  const suggestedUnit = match.selected?.defaultUnit ?? null;
-  const suggestedPriceHint = match.selected?.priceHints?.[0];
+  const suggestedUnit = match.selected?.defaultUnit ?? "kg";
+  const suggestedPriceHint = selectPrimaryPriceHint(match.selected?.priceHints);
   const suggestedPricePerKg =
     suggestedPriceHint && Number.isFinite(suggestedPriceHint.suggested)
       ? suggestedPriceHint.suggested
@@ -67,7 +78,7 @@ export async function getDraftSuggestedFieldsFromImage(
     item: itemName,
     description,
     suggestedPricePerKg,
-    suggestedUnit: suggestedUnit ?? null,
+    suggestedUnit,
     itemId: match.itemId ?? null,
   };
 }

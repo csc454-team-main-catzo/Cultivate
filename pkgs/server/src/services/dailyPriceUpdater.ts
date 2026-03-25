@@ -10,9 +10,8 @@
 
 import ProduceItem, { type IProduceItem, type IPriceHint } from "../models/ProduceItem.js";
 import Listing from "../models/Listing.js";
+import { PRICE_HINT_SOURCE_AAFC_INFOHORT } from "./produceMatcher.js";
 import { getTorontoWholesalePrices } from "./infohortPrices.js";
-
-const PRICE_SOURCE = "aafc_infohort_toronto";
 
 /**
  * Wholesale-to-suggested retail markup factor.
@@ -79,14 +78,14 @@ export async function runDailyPriceUpdate(): Promise<PriceUpdateResult> {
         typicalMin: priceData.lowPerKg,
         typicalMax: priceData.highPerKg,
         suggested: suggestedPrice,
-        source: PRICE_SOURCE,
+        source: PRICE_HINT_SOURCE_AAFC_INFOHORT,
         referencePeriod: priceData.date,
         notes: `Daily wholesale-to-retail (Toronto). Updated ${new Date().toISOString().slice(0, 10)}.`,
       };
 
       // Upsert: replace existing Infohort hint or push new one
       const hints: IPriceHint[] = (item.priceHints || []).slice();
-      const idx = hints.findIndex((h) => h.source === PRICE_SOURCE);
+      const idx = hints.findIndex((h) => h.source === PRICE_HINT_SOURCE_AAFC_INFOHORT);
       if (idx >= 0) {
         hints[idx] = newHint;
       } else {

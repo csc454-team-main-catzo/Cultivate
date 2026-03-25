@@ -6,6 +6,7 @@ import { useUser } from "../providers/userContext";
 import { ApiStatusError, useListingActions } from "../hooks/useListingActions";
 import GhostTextarea from "../components/GhostTextarea";
 import { getListingDescriptionSuggestion } from "../utils/suggestions";
+import { convertPriceBetweenUnits } from "../utils/unitPrice";
 
 type ListingUnit = "kg" | "lb" | "count" | "bunch";
 
@@ -60,6 +61,19 @@ export default function EditListing() {
       }),
     [item, qty, unit, price]
   );
+
+  function handleUnitChange(next: ListingUnit) {
+    const priceNum = parseFloat(price);
+    if (
+      Number.isFinite(priceNum) &&
+      priceNum >= 0 &&
+      unit !== next
+    ) {
+      const c = convertPriceBetweenUnits(priceNum, unit, next);
+      if (c != null) setPrice(c.toFixed(2));
+    }
+    setUnit(next);
+  }
 
   useEffect(() => {
     const listingId = id;
@@ -349,7 +363,7 @@ export default function EditListing() {
           </label>
           <select
             value={unit}
-            onChange={(e) => setUnit(e.target.value as ListingUnit)}
+            onChange={(e) => handleUnitChange(e.target.value as ListingUnit)}
             className="input-field"
           >
             <option value="kg">kg</option>

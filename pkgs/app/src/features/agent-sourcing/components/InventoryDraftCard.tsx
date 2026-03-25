@@ -5,6 +5,7 @@ import type { InventoryDraftData } from "../types";
 import CFG from "@/config";
 import GhostTextarea from "@/components/GhostTextarea";
 import { getListingDescriptionSuggestion } from "@/utils/suggestions";
+import { convertPriceBetweenUnits } from "@/utils/unitPrice";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -72,6 +73,15 @@ export function InventoryDraftCard({
     descTrimmed.length > 0 &&
     weightNum > 0 &&
     priceNum > 0;
+
+  function handleUnitChange(next: NonNullable<InventoryDraftData["unit"]>) {
+    const p = Number(price);
+    if (Number.isFinite(p) && p >= 0 && unit !== next) {
+      const c = convertPriceBetweenUnits(p, unit, next);
+      if (c != null) setPrice(String(c));
+    }
+    setUnit(next);
+  }
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -160,7 +170,9 @@ export function InventoryDraftCard({
                   className={selectClassName}
                   value={unit}
                   onChange={(e) =>
-                    setUnit(e.target.value as NonNullable<InventoryDraftData["unit"]>)
+                    handleUnitChange(
+                      e.target.value as NonNullable<InventoryDraftData["unit"]>
+                    )
                   }
                   aria-label="Listing unit"
                 >

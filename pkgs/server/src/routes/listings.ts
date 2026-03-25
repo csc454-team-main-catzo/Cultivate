@@ -9,7 +9,12 @@ import { User } from "../models/User.js";
 import ChatThread, { type IChatThread } from "../models/ChatThread.js";
 import CFG from "../config.js";
 import { downloadBufferFromGridFS } from "../services/gridfs.js";
-import { matchProduceFromTags, toTitleCase } from "../services/produceMatcher.js";
+import {
+  buildDraftPriceSuggestionTrace,
+  matchProduceFromTags,
+  selectPrimaryPriceHint,
+  toTitleCase,
+} from "../services/produceMatcher.js";
 import { getTags, type AzureVisionTag } from "../services/visionAzure.js";
 import { logJson } from "../utils/log.js";
 import {
@@ -245,9 +250,14 @@ listings.post(
       }));
 
       const match = await matchProduceFromTags(tags, itemMatchThreshold);
+      const priceSuggestionTrace = buildDraftPriceSuggestionTrace(match);
+      console.log(
+        "[DraftFromImage] price_suggestion_trace\n%s",
+        JSON.stringify(priceSuggestionTrace, null, 2)
+      );
       const itemName = match.itemName;
-      const suggestedUnit = match.selected?.defaultUnit || null;
-      const suggestedPriceHint = match.selected?.priceHints?.[0];
+      const suggestedUnit = match.selected?.defaultUnit ?? "kg";
+      const suggestedPriceHint = selectPrimaryPriceHint(match.selected?.priceHints);
       const suggestedPrice =
         suggestedPriceHint && Number.isFinite(suggestedPriceHint.suggested)
           ? suggestedPriceHint.suggested
@@ -304,6 +314,7 @@ listings.post(
           topCandidates: match.topCandidates.slice(0, 5),
           selected: match.selected,
         },
+        priceSuggestionTrace,
       });
 
       return c.json(

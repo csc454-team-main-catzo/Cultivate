@@ -248,7 +248,57 @@ async function fetchListingMatches(
   });
 }
 
-const FARMER_EXTRACT_FROM_TEXT_SYSTEM = `You are a Glean assistant. The user is creating a listing and we already have title, item, and description from their uploaded image. From their message extract ONLY: price per kg (number), weight/quantity (number), and unit (kg/lb/count/bunch). Reply with exactly one JSON object (no markdown): { "pricePerKg": number or null, "weightKg": number or null, "unit": "kg"|"lb"|"count"|"bunch" or null }.`;
+const FARMER_EXTRACT_FROM_TEXT_SYSTEM = `You help complete a farmer's listing after their photo was analyzed.
+
+You will receive: identified produce name, whether the server already has a CAD/kg wholesale-based hint, and the user's optional message.
+
+Return exactly one JSON object (no markdown): { "pricePerKg": number or null, "weightKg": number or null, "unit": "kg"|"lb"|"count"|"bunch" or null }.
+
+Rules:
+- If the user clearly states a price per kg in their message, use that as pricePerKg (number).
+- If the user states weight or unit, use those; otherwise use sensible defaults (e.g. weightKg 20, unit "kg").
+- If the user did NOT state a price:
+  - When the server already has a wholesale-based hint (see the prompt body), set pricePerKg to null so the platform can apply that hint.
+  - When the server has NO such hint (hint shown as "none"), you MUST suggest one plausible CAD price per kg for selling this produce in the Greater Toronto / Ontario context (wholesale-informed farm or small-lot retail), as a positive number — do not leave pricePerKg null in that case.
+`;
+
+function parseExtractedPricePerKg(parsed: { pricePerKg?: number | null }): number | null {
+  const v = parsed.pricePerKg;
+  if (v == null) return null;
+  const n = Number(v);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return n;
+}
+
+function userMessageLikelySpecifiesPrice(msg: string): boolean {
+  const m = msg.trim();
+  if (!m) return false;
+  return (
+    /\$?\d+(\.\d+)?\s*(per\s*)?(kg|lb|\/|dollar|bucks?)/i.test(m) ||
+    /\b\d+(\.\d+)?\s*(per\s*)?\$/i.test(m) ||
+    /price\s+\$?\d/i.test(m) ||
+    /\$\s*\d+(\.\d+)?/.test(m)
+  );
+}
+
+/** Prefer taxonomy wholesale hint when present unless the user message clearly states a price; otherwise trust LLM (including Toronto-informed guesses when there is no hint). */
+function mergeInventoryPricePerKg(
+  trimmed: string,
+  imageFields: { suggestedPricePerKg: number | null },
+  parsed: { pricePerKg?: number | null }
+): number {
+  const taxonomy =
+    imageFields.suggestedPricePerKg != null &&
+    Number.isFinite(imageFields.suggestedPricePerKg)
+      ? imageFields.suggestedPricePerKg
+      : null;
+  const llm = parseExtractedPricePerKg(parsed);
+  const explicit = userMessageLikelySpecifiesPrice(trimmed);
+  if (taxonomy != null && !explicit) return taxonomy;
+  if (llm != null) return llm;
+  if (taxonomy != null) return taxonomy;
+  return 3.5;
+}
 
 const FARMER_SYSTEM = `You are a Glean assistant helping farmers list their produce. Prices are based on daily Toronto wholesale market data from Agriculture and Agri-Food Canada (AAFC Infohort). From the user's message, extract a draft listing. Respond with exactly one JSON object (no markdown, no code block) with this shape:
 {
@@ -452,14 +502,26 @@ export async function runGleanAgent(req: GleanAgentRequest): Promise<GleanAgentR
     }
     if (imageFields && client) {
       try {
+        const hint = imageFields.suggestedPricePerKg;
+        const hasServerHint =
+          hint != null && Number.isFinite(hint) && hint > 0;
+        const userExtractBody = [
+          `Identified produce: "${imageFields.item}".`,
+          `Server wholesale-based price hint (CAD/kg), or none: ${
+            hasServerHint ? hint.toFixed(2) : "none"
+          }`,
+          "",
+          "User message (may be empty):",
+          trimmed || "(empty)",
+        ].join("\n");
         const res = await client.chat.completions.create({
           model: getLLMModel(),
           messages: [
             { role: "system", content: FARMER_EXTRACT_FROM_TEXT_SYSTEM },
-            { role: "user", content: trimmed },
+            { role: "user", content: userExtractBody },
           ],
           response_format: { type: "json_object" },
-          max_tokens: 200,
+          max_tokens: 280,
         });
         const raw = res.choices[0]?.message?.content;
         if (raw) {
@@ -468,8 +530,9 @@ export async function runGleanAgent(req: GleanAgentRequest): Promise<GleanAgentR
             weightKg?: number | null;
             unit?: string | null;
           };
-          const weightKg = Number(parsed.weightKg) || 20;
-          const pricePerKg = Number(parsed.pricePerKg) ?? imageFields.suggestedPricePerKg ?? 2.5;
+          const w = Number(parsed.weightKg);
+          const weightKg = Number.isFinite(w) && w > 0 ? w : 20;
+          const pricePerKg = mergeInventoryPricePerKg(trimmed, imageFields, parsed);
           const unit = ["kg", "lb", "count", "bunch"].includes(parsed.unit as string) ? parsed.unit : (imageFields.suggestedUnit ?? "kg");
           const draft: DraftListing = {
             title: imageFields.title,
