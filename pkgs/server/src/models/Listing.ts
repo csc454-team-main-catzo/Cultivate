@@ -74,6 +74,11 @@ export interface IListing extends Document {
   matchedResponseId: Types.ObjectId | null;
   status: "open" | "matched" | "fulfilled" | "expired";
   responses: IResponse[];
+  /**
+   * When true (supply only), daily Infohort-based price sync may adjust `price`.
+   * When false, the listed price stays as the user set it.
+   */
+  dynamicPricing?: boolean;
   createdAt: Date;
   updatedAt: Date;
   expiresAt: Date | null;
@@ -177,6 +182,10 @@ const ListingSchema = new Schema<IListing>(
     responses: {
       type: [ResponseSchema],
       default: [],
+    },
+    dynamicPricing: {
+      type: Boolean,
+      default: false,
     },
     expiresAt: {
       type: Date,

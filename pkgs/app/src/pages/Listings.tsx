@@ -21,14 +21,12 @@ export default function Listings() {
   const { listings: listingsApi } = useApi();
   const [listings, setListings] = useState<Listing[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<"all" | "demand" | "supply">("all");
 
   useEffect(() => {
     async function fetchListings() {
       setLoading(true);
       try {
-        const config = filter === "all" ? undefined : { params: { type: filter } };
-        const response = await listingsApi.listListings(config);
+        const response = await listingsApi.listListings();
         // Axios wraps the payload in { data: [...] }
         const items = (response as any).data ?? response;
         setListings(Array.isArray(items) ? items : []);
@@ -39,32 +37,15 @@ export default function Listings() {
       }
     }
     fetchListings();
-  }, [filter, listingsApi]);
+  }, [listingsApi]);
 
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 md:px-8 py-8">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
         <h1 className="text-2xl font-semibold text-zinc-900">Listings</h1>
-        <Link to="/listings/new" className="btn-primary shrink-0">
+        <Link to="/agent?new=1" className="btn-primary shrink-0">
           + New Listing
         </Link>
-      </div>
-
-      <div className="flex gap-2 mb-6 p-1 bg-zinc-100 rounded-lg w-fit">
-        {(["all", "demand", "supply"] as const).map((f) => (
-          <button
-            key={f}
-            type="button"
-            onClick={() => setFilter(f)}
-            className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-              filter === f
-                ? "bg-white text-zinc-900 shadow-card"
-                : "text-zinc-600 hover:text-zinc-800"
-            }`}
-          >
-            {f === "all" ? "All" : f === "demand" ? "Restaurants" : "Farmers"}
-          </button>
-        ))}
       </div>
 
       {loading ? (
@@ -77,7 +58,7 @@ export default function Listings() {
       ) : listings.length === 0 ? (
         <div className="card p-8 text-center">
           <p className="text-zinc-600 mb-2">No listings yet.</p>
-          <Link to="/listings/new" className="text-leaf-600 font-medium hover:text-leaf-700">
+          <Link to="/agent?new=1" className="text-leaf-600 font-medium hover:text-leaf-700">
             Create one
           </Link>
         </div>

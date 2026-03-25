@@ -67,6 +67,8 @@ export const ListingCreateSchema = v.object({
     )
   ),
   expiresAt: v.optional(v.string("expiresAt must be an ISO date string")),
+  /** Supply listings only: when true, daily Infohort sync may update price. */
+  dynamicPricing: v.optional(v.boolean(), false),
 });
 
 export type ListingCreateInput = v.InferOutput<typeof ListingCreateSchema>;
@@ -98,6 +100,7 @@ export const ListingUpdateSchema = v.partial(
         imageId: v.pipe(v.string(), v.minLength(1, "Photo imageId is required")),
       })
     ),
+    dynamicPricing: v.boolean(),
   })
 );
 
@@ -151,6 +154,7 @@ export const ListingResponseSchema = v.object({
   createdAt: v.string(),
   updatedAt: v.string(),
   expiresAt: v.nullable(v.string()),
+  dynamicPricing: v.optional(v.boolean(), false),
 });
 
 export const ListingListResponseSchema = v.array(ListingResponseSchema);

@@ -7,69 +7,45 @@
  * restaurant gets fuzzy-matched supply listings (from farmers) and an optional LLM-generated intro.
  */
 
-// Use namespace-safe import for Vercel/isolatedModules: avoid "OpenAI" as type and ensure constructable
-import OpenAIModule from "openai";
 import Listing from "../models/Listing.js";
+import ProduceItem from "../models/ProduceItem.js";
 import { getProduceMatchTerms } from "./produceMatcher.js";
-import { getDraftSuggestedFieldsFromImage } from "./draftFromImage.js";
+import { getDraftSuggestedFieldsFromImage, ImageGuardError } from "./draftFromImage.js";
+import { getLLMClient, getLLMModel } from "./llmClient.js";
 
-/** Minimal type for OpenAI-compatible chat client (avoids using package namespace as type). */
-interface LLMClient {
-  chat: {
-    completions: {
-      create(params: {
-        model: string;
-        messages: Array<{ role: string; content: string }>;
-        response_format?: { type: string };
-        max_tokens?: number;
-      }): Promise<{ choices: Array<{ message?: { content?: string | null } }> }>;
-    };
-  };
+const INFOHORT_PRICE_SOURCE = "aafc_infohort_toronto";
+
+function parseOptionalPositiveNumber(v: unknown): number | null {
+  if (v == null) return null;
+  const n = typeof v === "number" ? v : Number(String(v).trim());
+  return Number.isFinite(n) && n > 0 ? n : null;
 }
 
-/** Resolve OpenAI constructor (handles ESM default vs CJS/namespace interop). */
-function getOpenAIConstructor(): new (opts: { apiKey: string; baseURL?: string }) => LLMClient {
-  const M = OpenAIModule as unknown as
-    | (new (opts: { apiKey: string; baseURL?: string }) => LLMClient)
-    | { default?: new (opts: { apiKey: string; baseURL?: string }) => LLMClient; OpenAI?: new (opts: { apiKey: string; baseURL?: string }) => LLMClient };
-  const Ctor = (typeof M === "function" ? M : M?.default ?? (M as { OpenAI?: unknown }).OpenAI ?? M) as new (opts: { apiKey: string; baseURL?: string }) => LLMClient;
-  if (typeof Ctor !== "function") {
-    throw new Error("[Glean] OpenAI SDK: expected constructor; check openai package version.");
-  }
-  return Ctor;
-}
+async function getSuggestedPricePerKgForItem(itemCanonical: string): Promise<number | null> {
+  const canonical = itemCanonical.trim().toLowerCase();
+  if (!canonical) return null;
+  const doc = await ProduceItem.findOne({
+    canonical: { $regex: new RegExp(`^${canonical}$`, "i") },
+    active: true,
+  })
+    .select("priceHints")
+    .lean<{ priceHints?: Array<{ unit?: string; currency?: string; source?: string; suggested?: number }> }>();
 
-/** OpenAI-compatible client: Groq (free), OpenRouter (free models), or OpenAI. Prefer free providers when keys are set. */
-function getLLMClient(): LLMClient | null {
-  try {
-    const NewCtor = getOpenAIConstructor();
-    if (process.env.GROQ_API_KEY) {
-      return new NewCtor({
-        apiKey: process.env.GROQ_API_KEY,
-        baseURL: "https://api.groq.com/openai/v1",
-      });
-    }
-    if (process.env.OPENROUTER_API_KEY) {
-      return new NewCtor({
-        apiKey: process.env.OPENROUTER_API_KEY,
-        baseURL: "https://openrouter.ai/api/v1",
-      });
-    }
-    if (process.env.OPENAI_API_KEY) {
-      return new NewCtor({ apiKey: process.env.OPENAI_API_KEY });
-    }
-  } catch (err) {
-    console.error("[Glean] LLM client init failed:", err instanceof Error ? err.message : err);
-  }
-  return null;
-}
+  const hints = (doc?.priceHints || [])
+    .map((h) => ({
+      unit: String(h.unit || "").toLowerCase(),
+      currency: String(h.currency || "CAD").toUpperCase(),
+      source: String(h.source || ""),
+      suggested: Number(h.suggested || 0),
+    }))
+    .filter((h) => Number.isFinite(h.suggested) && h.suggested > 0);
 
-/** Model to use: GLEAN_LLM_MODEL, or provider default (Groq/OpenRouter free models, or gpt-4o-mini). */
-function getLLMModel(): string {
-  if (process.env.GLEAN_LLM_MODEL) return process.env.GLEAN_LLM_MODEL;
-  if (process.env.GROQ_API_KEY) return "llama-3.1-8b-instant";
-  if (process.env.OPENROUTER_API_KEY) return "meta-llama/llama-3.2-3b-instruct:free";
-  return "gpt-4o-mini";
+  if (hints.length === 0) return null;
+  const infohort = hints.find(
+    (h) => h.source === INFOHORT_PRICE_SOURCE && h.unit === "kg" && h.currency === "CAD"
+  );
+  return (infohort ?? hints.find((h) => h.unit === "kg" && h.currency === "CAD") ?? hints[0]!)
+    .suggested;
 }
 
 /** Prior message for context (e.g. last N turns). */
@@ -377,7 +353,7 @@ export async function runGleanAgent(req: GleanAgentRequest): Promise<GleanAgentR
         if (isFollowUpQuestion && singleListing) {
           const listingSummary = `Title: ${singleListing.title}. Item: ${singleListing.item}. Description: ${singleListing.description ?? "No description."}`;
           const res = await client.chat.completions.create({
-            model: getLLMModel(),
+            model: getLLMModel("glean"),
             messages: [
               { role: "system", content: RESTAURANT_ANSWER_FROM_LISTING_SYSTEM },
               { role: "user", content: `Listing: ${listingSummary}\n\nUser asked: "${userContent}"\n\nAnswer their question in one short sentence using only the listing info above.` },
@@ -394,7 +370,7 @@ export async function runGleanAgent(req: GleanAgentRequest): Promise<GleanAgentR
           }
         } else {
           const res = await client.chat.completions.create({
-            model: getLLMModel(),
+            model: getLLMModel("glean"),
             messages: [
               { role: "system", content: RESTAURANT_INTRO_SYSTEM },
               { role: "user", content: `Restaurant asked: "${userContent}". We found ${count} matching listing${count === 1 ? "" : "s"}. Write one short intro sentence that includes the number (${count}) and optionally what they asked for. Vary the phrasing.` },
@@ -424,13 +400,22 @@ export async function runGleanAgent(req: GleanAgentRequest): Promise<GleanAgentR
 
   // Farmer with image: Azure CV draft + merge text (price, qty)
   if (role === "farmer" && req.imageId && req.userId) {
-    let imageFields: Awaited<ReturnType<typeof getDraftSuggestedFieldsFromImage>> | null = null;
+    const INTRO_PHOTO_AND_MESSAGE =
+      "Here's your draft from the photo and your message. Price is based on today's Toronto wholesale market data. Confirm weight and price, then tap Post.";
+    let imageResult: Awaited<ReturnType<typeof getDraftSuggestedFieldsFromImage>> | null = null;
     try {
-      imageFields = await getDraftSuggestedFieldsFromImage(req.imageId, req.userId);
+      imageResult = await getDraftSuggestedFieldsFromImage(req.imageId, req.userId);
     } catch (err) {
+      if (err instanceof ImageGuardError) {
+        return {
+          introText: err.feedback,
+          payload: null,
+        };
+      }
       const msg = err instanceof Error ? err.message : String(err);
       console.error("[Glean] getDraftSuggestedFieldsFromImage failed:", msg);
     }
+    const imageFields = imageResult?.fields ?? null;
     if (!imageFields) {
       return {
         introText:
@@ -450,10 +435,17 @@ export async function runGleanAgent(req: GleanAgentRequest): Promise<GleanAgentR
         },
       };
     }
+    const taxonomySuggested =
+      imageFields.item && imageFields.item !== "produce"
+        ? await getSuggestedPricePerKgForItem(imageFields.item)
+        : null;
+    const defaultSuggestedPrice =
+      taxonomySuggested ?? imageFields.suggestedPricePerKg ?? DRAFT_FROM_IMAGE_FALLBACK.pricePerKg;
+
     if (imageFields && client) {
       try {
         const res = await client.chat.completions.create({
-          model: getLLMModel(),
+          model: getLLMModel("glean"),
           messages: [
             { role: "system", content: FARMER_EXTRACT_FROM_TEXT_SYSTEM },
             { role: "user", content: trimmed },
@@ -468,20 +460,69 @@ export async function runGleanAgent(req: GleanAgentRequest): Promise<GleanAgentR
             weightKg?: number | null;
             unit?: string | null;
           };
-          const weightKg = Number(parsed.weightKg) || 20;
-          const pricePerKg = Number(parsed.pricePerKg) ?? imageFields.suggestedPricePerKg ?? 2.5;
+          const weightKg = parseOptionalPositiveNumber(parsed.weightKg) ?? 20;
+          const pricePerKg = parseOptionalPositiveNumber(parsed.pricePerKg) ?? defaultSuggestedPrice;
           const unit = ["kg", "lb", "count", "bunch"].includes(parsed.unit as string) ? parsed.unit : (imageFields.suggestedUnit ?? "kg");
+
+          const COPY_SYSTEM = `You are a helpful assistant. Generate short, natural copy for a produce listing draft.\nReply JSON only: { "introText": string, "title": string, "description": string }.\n- Keep introText to one sentence.\n- Keep title under 60 chars.\n- Description 1-2 sentences, no emojis, no marketing fluff.\n- Do NOT invent certifications (organic) or locations.\n- Mention price only if provided.\n`;
+          let introText =
+            "Here's your draft from the photo and your message. Confirm weight and price, then tap Post.";
+          let title = imageFields.title;
+          let description = imageFields.description;
+          try {
+            const copyRes = await client.chat.completions.create({
+              model: getLLMModel("glean"),
+              messages: [
+                { role: "system", content: COPY_SYSTEM },
+                {
+                  role: "user",
+                  content: JSON.stringify({
+                    item: imageFields.item,
+                    weightKg,
+                    unit,
+                    pricePerKg,
+                    currency: "CAD",
+                    imageConfidence: imageResult?.confidence ?? null,
+                  }),
+                },
+              ],
+              response_format: { type: "json_object" },
+              max_tokens: 180,
+            });
+            const copyRaw = copyRes.choices[0]?.message?.content;
+            if (copyRaw) {
+              const copy = JSON.parse(copyRaw) as {
+                introText?: string;
+                title?: string;
+                description?: string;
+              };
+              if (typeof copy.introText === "string" && copy.introText.trim()) {
+                introText = copy.introText.trim();
+              }
+              if (typeof copy.title === "string" && copy.title.trim()) {
+                title = copy.title.trim().slice(0, 150);
+              }
+              if (typeof copy.description === "string") {
+                const d = copy.description.trim();
+                if (d) description = d.slice(0, 500);
+              }
+            }
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            console.error("[Glean] LLM copy generation failed, using template:", msg);
+          }
+
           const draft: DraftListing = {
-            title: imageFields.title,
+            title,
             item: imageFields.item,
-            description: imageFields.description,
+            description,
             weightKg,
             pricePerKg,
             unit: unit as "kg" | "lb" | "count" | "bunch",
             imageId: req.imageId,
           };
           return {
-            introText: "Here's your draft from the photo and your message. Price is based on today's Toronto wholesale market data. Confirm weight and price, then tap Post.",
+            introText: INTRO_PHOTO_AND_MESSAGE,
             payload: { type: "inventory_form", draft, userMessage: trimmed },
           };
         }
@@ -489,13 +530,12 @@ export async function runGleanAgent(req: GleanAgentRequest): Promise<GleanAgentR
         const msg = err instanceof Error ? err.message : String(err);
         console.error("[Glean] Extract-from-text (with image) failed:", msg);
       }
-      // LLM extract failed: still return draft from image with defaults
       const draft: DraftListing = {
         title: imageFields.title,
         item: imageFields.item,
         description: imageFields.description,
         weightKg: 20,
-        pricePerKg: imageFields.suggestedPricePerKg ?? 3.5,
+        pricePerKg: defaultSuggestedPrice,
         unit: (imageFields.suggestedUnit as "kg" | "lb" | "count" | "bunch") ?? "kg",
         imageId: req.imageId,
       };
@@ -510,7 +550,7 @@ export async function runGleanAgent(req: GleanAgentRequest): Promise<GleanAgentR
         item: imageFields.item,
         description: imageFields.description,
         weightKg: 20,
-        pricePerKg: imageFields.suggestedPricePerKg ?? 3.5,
+        pricePerKg: defaultSuggestedPrice,
         unit: (imageFields.suggestedUnit as "kg" | "lb" | "count" | "bunch") ?? "kg",
         imageId: req.imageId,
       };
@@ -528,7 +568,7 @@ export async function runGleanAgent(req: GleanAgentRequest): Promise<GleanAgentR
         ? `Previous messages (for context):\n${priorMessages.map((m) => `${m.role}: ${m.content ?? ""}`).join("\n")}\n\nCurrent user message:`
         : "User message:";
       const res = await client.chat.completions.create({
-        model: getLLMModel(),
+        model: getLLMModel("glean"),
         messages: [
           { role: "system", content: FARMER_SYSTEM },
           { role: "user", content: `${context}\n${trimmed}` },

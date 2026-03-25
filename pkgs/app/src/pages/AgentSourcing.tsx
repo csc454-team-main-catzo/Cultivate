@@ -1,4 +1,5 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { MessageSquarePlus } from "lucide-react";
 import { useUser } from "../providers/userContext";
 import { useListingActions } from "../hooks/useListingActions";
@@ -9,7 +10,10 @@ import { getUserRole } from "../lib/auth";
 import { Button } from "../components/ui/button";
 import type { InventoryDraftData, ListingPostSuccessInfo } from "../features/agent-sourcing/types";
 
+const NEW_CHAT_QUERY = "new";
+
 export default function AgentSourcing() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useUser();
   const { createListing } = useListingActions();
   const role = getUserRole(user ?? null) ?? "farmer";
@@ -25,6 +29,11 @@ export default function AgentSourcing() {
     deleteChat,
   } = useGleanChats(role);
 
+  useEffect(() => {
+    if (searchParams.get(NEW_CHAT_QUERY) !== "1" || chatsLoading) return;
+    setSearchParams({}, { replace: true });
+    void createChat();
+  }, [searchParams, chatsLoading, createChat, setSearchParams]);
   const noChats = !chatsLoading && chats.length === 0;
 
   const [postError, setPostError] = useState<string | null>(null);
@@ -43,6 +52,7 @@ export default function AgentSourcing() {
           price: draft.pricePerKg,
           qty: draft.weightKg,
           unit,
+          ...(draft.dynamicPricing ? { dynamicPricing: true } : {}),
           ...(draft.imageId && { photos: [{ imageId: draft.imageId }] }),
         };
         const created = (await createListing(body)) as { _id: string };

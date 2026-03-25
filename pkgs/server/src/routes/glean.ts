@@ -2,12 +2,14 @@ import { Hono } from "hono";
 import { describeRoute } from "hono-openapi";
 import * as v from "valibot";
 import { authMiddleware } from "../middleware/auth.js";
+import { rateLimiter } from "../middleware/rateLimit.js";
 import type { AuthenticatedContext } from "../middleware/types.js";
 import GleanChat from "../models/GleanChat.js";
 import GleanCart from "../models/GleanCart.js";
 import { runGleanAgent, type InventoryConstraints } from "../services/gleanAgent.js";
 import Listing from "../models/Listing.js";
 import { getProduceMatchTerms } from "../services/produceMatcher.js";
+import CFG from "../config.js";
 import { runDailyPriceUpdate } from "../services/dailyPriceUpdater.js";
 
 const glean = new Hono<AuthenticatedContext>();
@@ -146,6 +148,8 @@ const AppendMessageBody = v.object({
       pricePerKg: v.number(),
       unit: v.optional(v.picklist(["kg", "lb", "count", "bunch"])),
       imageId: v.optional(v.string()),
+      formInstanceId: v.optional(v.string()),
+      dynamicPricing: v.optional(v.boolean()),
     })
   ),
   options: v.optional(v.array(StrategyOptionSchema)),
@@ -570,9 +574,15 @@ glean.post(
     responses: {
       200: { description: "Intro text and structured payload (product_grid or inventory_form)" },
       400: { description: "Invalid request" },
+      429: { description: "Rate limit exceeded" },
     },
   }),
   authMiddleware({ optional: true }),
+  rateLimiter({
+    max: CFG.RATE_LIMIT_AGENT_MAX,
+    windowMs: CFG.RATE_LIMIT_AGENT_WINDOW_MS,
+    message: "Too many requests. Please wait a moment before trying again.",
+  }),
   async (c) => {
     try {
       const raw = await readJson(c);

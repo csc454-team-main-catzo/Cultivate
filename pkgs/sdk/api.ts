@@ -39,6 +39,7 @@ export interface CreateListing201Response {
     'createdAt': string;
     'updatedAt': string;
     'expiresAt': string | null;
+    'dynamicPricing'?: boolean;
 }
 
 export const CreateListing201ResponseTypeEnum = {
@@ -74,6 +75,8 @@ export interface CreateListingRequest {
     'unit'?: 'kg' | 'lb' | 'count' | 'bunch';
     'photos'?: Array<{ 'imageId': string }>;
     'expiresAt'?: string | null;
+    /** Supply: when true, daily Infohort sync may update listing price. */
+    'dynamicPricing'?: boolean;
 }
 
 export const CreateListingRequestTypeEnum = {
@@ -112,6 +115,7 @@ export interface ListListings200ResponseInner {
     'createdAt': string | null;
     'updatedAt': string | null;
     'expiresAt': string | null;
+    'dynamicPricing'?: boolean;
 }
 
 export const ListListings200ResponseInnerTypeEnum = {

@@ -6,6 +6,7 @@
     "build": "tsc",
     "start": "node --env-file=.env dist/index.js",
     "seed:produce": "tsx --env-file=.env scripts/seed_produce_items.ts",
+    "seed:demo-sourcing-listings": "tsx --env-file=.env scripts/seed_demo_sourcing_listings.ts",
     "smoke:draft-from-image": "tsx --env-file=.env scripts/smoke_draft_from_image.ts"
   },
   "dependencies": {

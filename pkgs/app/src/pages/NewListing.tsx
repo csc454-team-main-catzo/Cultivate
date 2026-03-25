@@ -5,6 +5,7 @@ import {
   ApiStatusError,
   type DraftFromImageResponse,
   type DraftSuggestedFields,
+  type GuardRejection,
   useListingActions,
 } from "../hooks/useListingActions";
 import GhostTextarea from "../components/GhostTextarea";
@@ -56,7 +57,10 @@ export default function NewListing() {
   const [uploadingImage, setUploadingImage] = useState(false);
   const [generatingDraft, setGeneratingDraft] = useState(false);
   const [draft, setDraft] = useState<DraftFromImageResponse | null>(null);
+  const [guardRejection, setGuardRejection] = useState<GuardRejection | null>(null);
+  const [dynamicPricing, setDynamicPricing] = useState(false);
   const imageId = form.photos[0]?.imageId ?? "";
+  const isSupplyListing = user?.role === "farmer";
 
   const canGenerateDraft = Boolean(imageId) && !generatingDraft;
 
@@ -121,6 +125,7 @@ export default function NewListing() {
     setError(null);
     setSelectedImage(file);
     setDraft(null);
+    setGuardRejection(null);
 
     const nextPreview = URL.createObjectURL(file);
     setPreviewUrl((prev) => {
@@ -162,11 +167,22 @@ export default function NewListing() {
     setGeneratingDraft(true);
     setError(null);
     setToast(null);
+    setGuardRejection(null);
     try {
       const result = await getDraft(imageId);
       setDraft(result);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Failed to generate draft");
+      if (
+        err instanceof ApiStatusError &&
+        err.status === 422 &&
+        (err as ApiStatusError & { guardRejection?: GuardRejection }).guardRejection
+      ) {
+        setGuardRejection(
+          (err as ApiStatusError & { guardRejection: GuardRejection }).guardRejection
+        );
+      } else {
+        setError(err instanceof Error ? err.message : "Failed to generate draft");
+      }
     } finally {
       setGeneratingDraft(false);
     }
@@ -235,6 +251,7 @@ export default function NewListing() {
         qty,
         unit: (form.unit || "kg") as "kg" | "lb" | "count" | "bunch",
         photos: form.photos,
+        ...(type === "supply" && dynamicPricing ? { dynamicPricing: true } : {}),
       });
 
       navigate("/listings");
@@ -343,6 +360,37 @@ export default function NewListing() {
           </span>
         </div>
 
+        {guardRejection && (
+          <div className="card p-4 space-y-3 border-amber-200 bg-amber-50">
+            <h2 className="text-lg font-semibold text-amber-900">
+              {guardRejection.error === "not_produce"
+                ? "Image not recognized as produce"
+                : "Could not identify produce"}
+            </h2>
+            <p className="text-sm text-amber-800">{guardRejection.feedback}</p>
+            {guardRejection.exampleImageHint && (
+              <div className="flex items-start gap-3 rounded-lg border border-amber-200 bg-white p-3">
+                <div className="shrink-0 flex items-center justify-center w-16 h-16 rounded-lg bg-leaf-50 border border-leaf-200">
+                  <svg className="w-8 h-8 text-leaf-500" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6.115 5.19l.319 1.913A6 6 0 008.11 10.36L9.75 12l-.387.775c-.217.433-.132.956.21 1.298l1.348 1.348c.21.21.329.497.329.795v1.089c0 .426.24.815.622 1.006l.153.076c.433.217.956.132 1.298-.21l.723-.723a8.7 8.7 0 002.288-4.042 1.087 1.087 0 00-.358-1.099l-1.33-1.108c-.251-.21-.582-.299-.905-.245l-1.17.195a1.125 1.125 0 01-.98-.314l-.295-.295a1.125 1.125 0 010-1.591l.13-.132a1.125 1.125 0 011.3-.21l.603.302a.809.809 0 001.086-1.086L14.25 7.5l1.256-.837a4.5 4.5 0 001.528-1.732l.146-.292M6.115 5.19A9 9 0 1017.18 4.64M6.115 5.19A8.965 8.965 0 0112 3c1.929 0 3.72.607 5.18 1.64" />
+                  </svg>
+                </div>
+                <div className="text-xs text-zinc-600">
+                  <p className="font-medium text-zinc-800 mb-1">Tip for a good photo</p>
+                  <p>{guardRejection.exampleImageHint}</p>
+                </div>
+              </div>
+            )}
+            <button
+              type="button"
+              className="btn-secondary text-sm"
+              onClick={() => setGuardRejection(null)}
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
+
         {draft && (
           <div className="card p-4 space-y-3">
             <div className="flex items-center justify-between gap-3">
@@ -392,9 +440,6 @@ export default function NewListing() {
                 Dismiss
               </button>
             </div>
-            {/* <p className="text-xs text-zinc-500">
-              Not automatically filled: {NEVER_AUTO_FILL.join(", ")}
-            </p> */}
           </div>
         )}
 
@@ -489,6 +534,27 @@ export default function NewListing() {
             className="input-field"
           />
         </div>
+
+        {isSupplyListing && (
+          <div className="rounded-lg border border-zinc-200 bg-zinc-50/80 px-4 py-3">
+            <label className="flex items-start gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                className="mt-1 h-4 w-4 rounded border-zinc-300 text-leaf-600 focus:ring-leaf-500"
+                checked={dynamicPricing}
+                onChange={(e) => setDynamicPricing(e.target.checked)}
+              />
+              <span>
+                <span className="block text-sm font-medium text-zinc-800">
+                  Dynamic pricing (Infohort)
+                </span>
+                <span className="block text-xs text-zinc-600 mt-0.5">
+                  When enabled, your price may update with daily Toronto wholesale market data. Leave off to keep the price you set.
+                </span>
+              </span>
+            </label>
+          </div>
+        )}
 
         <p className="text-sm text-zinc-600">
           Listing location uses the postal code in your{" "}

@@ -11,6 +11,8 @@ export interface UpdateListingBody {
   unit?: "kg" | "lb" | "count" | "bunch";
   status?: string;
   photos?: Array<{ imageId: string }>;
+  /** Supply only: when true, daily Infohort sync may update price. */
+  dynamicPricing?: boolean;
 }
 
 export interface CreateListingBody {
@@ -22,6 +24,8 @@ export interface CreateListingBody {
   qty: number;
   unit?: "kg" | "lb" | "count" | "bunch";
   photos?: Array<{ imageId: string }>;
+  /** Supply only: when true, daily Infohort sync may update price. */
+  dynamicPricing?: boolean;
 }
 
 export interface UploadImageResponse {
@@ -74,6 +78,14 @@ export interface DraftFromImageResponse {
   suggestedFields: DraftSuggestedFields;
   confidence: number;
   reasons: DraftReason[];
+}
+
+export interface GuardRejection {
+  error: "not_produce" | "low_confidence";
+  rejectionReason?: string;
+  feedback: string;
+  confidence?: number;
+  exampleImageHint?: string;
 }
 
 export class ApiStatusError extends Error {
@@ -245,10 +257,20 @@ export function useListingActions() {
         headers,
         body: JSON.stringify({ imageId }),
       });
-      const data = (await res.json().catch(() => ({}))) as DraftFromImageResponse & {
-        error?: string;
-      };
+      const data = (await res.json().catch(() => ({}))) as DraftFromImageResponse &
+        GuardRejection & { error?: string };
       if (!res.ok) {
+        if (res.status === 422 && (data.error === "not_produce" || data.error === "low_confidence")) {
+          const err = new ApiStatusError(res.status, data.feedback || data.error);
+          (err as ApiStatusError & { guardRejection: GuardRejection }).guardRejection = {
+            error: data.error,
+            rejectionReason: data.rejectionReason,
+            feedback: data.feedback,
+            confidence: data.confidence,
+            exampleImageHint: data.exampleImageHint,
+          };
+          throw err;
+        }
         throw new ApiStatusError(
           res.status,
           data.error || "Failed to generate draft"

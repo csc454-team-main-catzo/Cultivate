@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { describeRoute, resolver, validator } from "hono-openapi";
 import { authMiddleware } from "../middleware/auth.js";
+import { rateLimiter } from "../middleware/rateLimit.js";
 import type { AuthenticatedContext } from "../middleware/types.js";
 import DraftSuggestion from "../models/DraftSuggestion.js";
 import ImageAsset from "../models/ImageAsset.js";
@@ -11,7 +12,10 @@ import CFG from "../config.js";
 import { downloadBufferFromGridFS } from "../services/gridfs.js";
 import { matchProduceFromTags, toTitleCase } from "../services/produceMatcher.js";
 import { getTags, type AzureVisionTag } from "../services/visionAzure.js";
+import { evaluateProduceGuard } from "../services/produceGuard.js";
+import { getLLMClient, getLLMModel } from "../services/llmClient.js";
 import { logJson } from "../utils/log.js";
+import { resolveDynamicListingPricePerKg } from "../services/dailyPriceUpdater.js";
 import {
   DraftFromImageResponseSchema,
   DraftFromImageSchema,
@@ -32,6 +36,40 @@ import {
 
 const listings = new Hono<AuthenticatedContext>();
 const itemMatchThreshold = Number(CFG.ITEM_MATCH_THRESHOLD || 0.6);
+const INFOHORT_PRICE_SOURCE = "aafc_infohort_toronto";
+
+function pickBestPriceHint(
+  hints:
+    | Array<{
+        unit: string;
+        suggested: number;
+        currency: string;
+        referencePeriod: string;
+        source: string;
+      }>
+    | undefined
+    | null
+) {
+  const list = (hints || [])
+    .filter((h) => h && typeof h === "object")
+    .map((h) => ({
+      ...h,
+      unit: String(h.unit || "").toLowerCase(),
+      currency: String(h.currency || "CAD").toUpperCase(),
+      source: String(h.source || ""),
+      suggested: Number(h.suggested || 0),
+    }))
+    .filter((h) => Number.isFinite(h.suggested) && h.suggested > 0);
+
+  if (list.length === 0) return null;
+  const infohort = list.find(
+    (h) => h.source === INFOHORT_PRICE_SOURCE && h.unit === "kg" && h.currency === "CAD"
+  );
+  if (infohort) return infohort;
+  const kgCad = list.find((h) => h.unit === "kg" && h.currency === "CAD");
+  if (kgCad) return kgCad;
+  return list[0] ?? null;
+}
 const NEVER_AUTO_FILL = [
   "qty",
   // unit is now suggested from taxonomy metadata
@@ -175,7 +213,21 @@ listings.post(
         latLng: user.latLng as [number, number],
         postalCode: user.postalCode,
         createdBy: userId,
+        dynamicPricing:
+          data.type === "supply" ? Boolean(data.dynamicPricing) : false,
       });
+
+      if (
+        listing.type === "supply" &&
+        listing.dynamicPricing &&
+        listing.status === "open"
+      ) {
+        const suggested = await resolveDynamicListingPricePerKg(listing.item);
+        if (suggested != null) {
+          listing.price = suggested;
+          await listing.save();
+        }
+      }
 
       const populated = await Listing.findById(listing._id)
         .populate("createdBy", "name email role")
@@ -210,9 +262,16 @@ listings.post(
       401: { description: "Unauthorized" },
       403: { description: "Forbidden" },
       404: { description: "Image not found" },
+      422: { description: "Image rejected by content guard (not produce or low confidence)" },
+      429: { description: "Rate limit exceeded" },
     },
   }),
   authMiddleware(),
+  rateLimiter({
+    max: CFG.RATE_LIMIT_DRAFT_MAX,
+    windowMs: CFG.RATE_LIMIT_DRAFT_WINDOW_MS,
+    message: "Too many draft requests. Please try again shortly.",
+  }),
   validator("json", DraftFromImageSchema),
   async (c) => {
     try {
@@ -239,15 +298,62 @@ listings.post(
         return c.json({ error: "vision_failed" }, 500);
       }
 
+      // --- Produce content guard ---
+      const guard = evaluateProduceGuard(tags);
+      if (!guard.isProduce) {
+        logJson("vision_guard_rejected", {
+          userId,
+          imageId,
+          produceConfidence: guard.produceConfidence,
+          reason: guard.rejectionReason,
+          tagsTop10: tags.slice(0, 10),
+        });
+        return c.json(
+          {
+            error: "not_produce",
+            rejectionReason: guard.rejectionReason,
+            feedback: guard.feedback,
+            exampleImageHint: "Upload a clear photo of raw fruits or vegetables on a plain surface.",
+          },
+          422
+        );
+      }
+
       const reasons = tags.slice(0, 5).map((tag) => ({
         desc: tag.name,
         score: tag.confidence,
       }));
 
       const match = await matchProduceFromTags(tags, itemMatchThreshold);
+
+      // --- Low-confidence guard: don't guess if we can't identify the item ---
+      if (match.confidence < CFG.LOW_CONFIDENCE_THRESHOLD) {
+        logJson("vision_low_confidence", {
+          userId,
+          imageId,
+          confidence: match.confidence,
+          threshold: CFG.LOW_CONFIDENCE_THRESHOLD,
+          topCandidates: match.topCandidates.slice(0, 5),
+          tagsTop10: tags.slice(0, 10),
+        });
+        return c.json(
+          {
+            error: "low_confidence",
+            confidence: match.confidence,
+            feedback: [
+              "We detected produce but couldn't identify the specific item with enough certainty.",
+              "Try a closer, well-lit photo showing only one type of produce.",
+              "Avoid busy backgrounds, mixed piles, or images taken from far away.",
+            ].join(" "),
+            exampleImageHint: "Place the produce on a plain surface, fill the frame, and ensure good lighting.",
+          },
+          422
+        );
+      }
+
       const itemName = match.itemName;
       const suggestedUnit = match.selected?.defaultUnit || null;
-      const suggestedPriceHint = match.selected?.priceHints?.[0];
+      const suggestedPriceHint = pickBestPriceHint(match.selected?.priceHints);
       const suggestedPrice =
         suggestedPriceHint && Number.isFinite(suggestedPriceHint.suggested)
           ? suggestedPriceHint.suggested
@@ -258,10 +364,51 @@ listings.post(
           : suggestedUnit
             ? [suggestedUnit]
             : [];
-      const title = itemName ? `Fresh ${toTitleCase(itemName)}` : "Fresh local produce";
-      const description = itemName
+      const fallbackTitle = itemName ? `Fresh ${toTitleCase(itemName)}` : "Fresh local produce";
+      const fallbackDescription = itemName
         ? `Fresh ${toTitleCase(itemName)}, locally grown. Message for pickup window + partial fulfillment.`
         : "Fresh local produce. Message for pickup window + partial fulfillment.";
+
+      let title = fallbackTitle;
+      let description = fallbackDescription;
+      const client = getLLMClient();
+      if (client && itemName) {
+        try {
+          const COPY_SYSTEM = `You generate short copy for a produce listing draft.\nReply JSON only: { "title": string, "description": string }.\n- Title under 60 chars.\n- Description 1-2 sentences.\n- No emojis, no marketing fluff.\n- Do NOT invent certifications (organic) or locations.\n- Mention price only if provided.\n`;
+          const res = await client.chat.completions.create({
+            model: getLLMModel("listings"),
+            messages: [
+              { role: "system", content: COPY_SYSTEM },
+              {
+                role: "user",
+                content: JSON.stringify({
+                  item: itemName,
+                  suggestedPricePerKg: suggestedPrice,
+                  currency: "CAD",
+                  unit: suggestedUnit ?? "kg",
+                }),
+              },
+            ],
+            response_format: { type: "json_object" },
+            max_tokens: 180,
+          });
+          const raw = res.choices[0]?.message?.content;
+          if (raw) {
+            const parsed = JSON.parse(raw) as { title?: string; description?: string };
+            if (typeof parsed.title === "string" && parsed.title.trim()) {
+              title = parsed.title.trim().slice(0, 150);
+            }
+            if (typeof parsed.description === "string" && parsed.description.trim()) {
+              description = parsed.description.trim().slice(0, 500);
+            }
+          }
+        } catch (err) {
+          console.error(
+            "[Listings] LLM copy generation failed, using template:",
+            err instanceof Error ? err.message : String(err)
+          );
+        }
+      }
       const suggestedFields = {
         itemId: match.itemId,
         itemName: match.itemName,
@@ -298,6 +445,9 @@ listings.post(
         },
         azure: {
           tagsTop20: tags.slice(0, 20),
+        },
+        guard: {
+          produceConfidence: guard.produceConfidence,
         },
         match: {
           threshold: match.threshold,
@@ -642,6 +792,22 @@ listings.patch(
       if (data.qty !== undefined) listing.qty = data.qty;
       if (data.unit !== undefined) listing.unit = data.unit;
       if (data.status !== undefined) listing.status = data.status;
+      if (data.dynamicPricing !== undefined) {
+        listing.dynamicPricing =
+          listing.type === "supply" ? data.dynamicPricing : false;
+      }
+
+      if (
+        listing.type === "supply" &&
+        listing.dynamicPricing &&
+        listing.status === "open"
+      ) {
+        const suggested = await resolveDynamicListingPricePerKg(listing.item);
+        if (suggested != null) {
+          listing.price = suggested;
+        }
+      }
+
       await listing.save();
 
       const populated = await Listing.findById(listing._id)

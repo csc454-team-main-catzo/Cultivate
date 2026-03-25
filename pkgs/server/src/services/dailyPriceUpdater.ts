@@ -2,8 +2,8 @@
  * Daily price updater:
  * 1. Fetches latest Toronto wholesale prices from AAFC Infohort.
  * 2. Upserts priceHints on matching ProduceItem taxonomy documents.
- * 3. Adjusts prices on open supply listings whose item matches a produce
- *    item with updated wholesale data.
+ * 3. Adjusts prices on open supply listings that opted into dynamic pricing
+ *    (`dynamicPricing: true`) when the item matches updated wholesale data.
  *
  * Designed to run once per day via setInterval (or on server startup).
  */
@@ -20,6 +20,67 @@ const PRICE_SOURCE = "aafc_infohort_toronto";
  * farm-to-restaurant platform the markup is modest (≈ 20 %).
  */
 const WHOLESALE_TO_SUGGESTED_MARKUP = 1.2;
+
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/** Same keying as Step 2 in `runDailyPriceUpdate` (listing `item` → Infohort canonical). */
+export function normalizeListingItemKey(item: string): string {
+  return (item ?? "").toLowerCase().replace(/s$/, "");
+}
+
+function pickSuggestedFromPriceHints(hints: IPriceHint[] | undefined | null): number | null {
+  const list = (hints || [])
+    .filter((h) => h && typeof h === "object")
+    .map((h) => ({
+      unit: String(h.unit || "").toLowerCase(),
+      currency: String(h.currency || "CAD").toUpperCase(),
+      source: String(h.source || ""),
+      suggested: Number(h.suggested || 0),
+    }))
+    .filter((h) => Number.isFinite(h.suggested) && h.suggested > 0);
+  if (list.length === 0) return null;
+  const infohort = list.find(
+    (h) => h.source === PRICE_SOURCE && h.unit === "kg" && h.currency === "CAD"
+  );
+  if (infohort) return infohort.suggested;
+  const kgCad = list.find((h) => h.unit === "kg" && h.currency === "CAD");
+  if (kgCad) return kgCad.suggested;
+  return list[0]!.suggested;
+}
+
+/**
+ * Suggested retail $/kg for a listing item: live Toronto wholesale × markup, or
+ * ProduceItem taxonomy hints if the commodity is not in the current feed.
+ * Used when the user enables dynamic pricing (immediate update), matching the daily job.
+ */
+export async function resolveDynamicListingPricePerKg(item: string): Promise<number | null> {
+  const key = normalizeListingItemKey(item);
+  if (!key) return null;
+
+  try {
+    const prices = await getTorontoWholesalePrices();
+    const entry = prices.get(key);
+    if (entry) {
+      return Math.round(entry.midPerKg * WHOLESALE_TO_SUGGESTED_MARKUP * 100) / 100;
+    }
+  } catch (err) {
+    console.warn(
+      "[DailyPriceUpdater] resolveDynamicListingPricePerKg: wholesale fetch failed:",
+      err instanceof Error ? err.message : err
+    );
+  }
+
+  const doc = await ProduceItem.findOne({
+    canonical: { $regex: new RegExp(`^${escapeRegex(key)}$`, "i") },
+    active: true,
+  })
+    .select("priceHints")
+    .lean<{ priceHints?: IPriceHint[] }>();
+
+  return pickSuggestedFromPriceHints(doc?.priceHints);
+}
 
 export interface PriceUpdateResult {
   produceItemsUpdated: number;
@@ -114,6 +175,7 @@ export async function runDailyPriceUpdate(): Promise<PriceUpdateResult> {
       const openListings = await Listing.find({
         status: "open",
         type: "supply",
+        dynamicPricing: true,
         $or: regexes.map((r) => ({ item: r })),
       });
 
