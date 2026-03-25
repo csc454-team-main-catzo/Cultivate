@@ -13,6 +13,7 @@ import { downloadBufferFromGridFS } from "../services/gridfs.js";
 import { matchProduceFromTags, toTitleCase } from "../services/produceMatcher.js";
 import { getTags, type AzureVisionTag } from "../services/visionAzure.js";
 import { evaluateProduceGuard } from "../services/produceGuard.js";
+import { getLLMClient, getLLMModel } from "../services/llmClient.js";
 import { logJson } from "../utils/log.js";
 import {
   DraftFromImageResponseSchema,
@@ -34,6 +35,40 @@ import {
 
 const listings = new Hono<AuthenticatedContext>();
 const itemMatchThreshold = Number(CFG.ITEM_MATCH_THRESHOLD || 0.6);
+const INFOHORT_PRICE_SOURCE = "aafc_infohort_toronto";
+
+function pickBestPriceHint(
+  hints:
+    | Array<{
+        unit: string;
+        suggested: number;
+        currency: string;
+        referencePeriod: string;
+        source: string;
+      }>
+    | undefined
+    | null
+) {
+  const list = (hints || [])
+    .filter((h) => h && typeof h === "object")
+    .map((h) => ({
+      ...h,
+      unit: String(h.unit || "").toLowerCase(),
+      currency: String(h.currency || "CAD").toUpperCase(),
+      source: String(h.source || ""),
+      suggested: Number(h.suggested || 0),
+    }))
+    .filter((h) => Number.isFinite(h.suggested) && h.suggested > 0);
+
+  if (list.length === 0) return null;
+  const infohort = list.find(
+    (h) => h.source === INFOHORT_PRICE_SOURCE && h.unit === "kg" && h.currency === "CAD"
+  );
+  if (infohort) return infohort;
+  const kgCad = list.find((h) => h.unit === "kg" && h.currency === "CAD");
+  if (kgCad) return kgCad;
+  return list[0] ?? null;
+}
 const NEVER_AUTO_FILL = [
   "qty",
   // unit is now suggested from taxonomy metadata
@@ -303,7 +338,7 @@ listings.post(
 
       const itemName = match.itemName;
       const suggestedUnit = match.selected?.defaultUnit || null;
-      const suggestedPriceHint = match.selected?.priceHints?.[0];
+      const suggestedPriceHint = pickBestPriceHint(match.selected?.priceHints);
       const suggestedPrice =
         suggestedPriceHint && Number.isFinite(suggestedPriceHint.suggested)
           ? suggestedPriceHint.suggested
@@ -314,10 +349,51 @@ listings.post(
           : suggestedUnit
             ? [suggestedUnit]
             : [];
-      const title = itemName ? `Fresh ${toTitleCase(itemName)}` : "Fresh local produce";
-      const description = itemName
+      const fallbackTitle = itemName ? `Fresh ${toTitleCase(itemName)}` : "Fresh local produce";
+      const fallbackDescription = itemName
         ? `Fresh ${toTitleCase(itemName)}, locally grown. Message for pickup window + partial fulfillment.`
         : "Fresh local produce. Message for pickup window + partial fulfillment.";
+
+      let title = fallbackTitle;
+      let description = fallbackDescription;
+      const client = getLLMClient();
+      if (client && itemName) {
+        try {
+          const COPY_SYSTEM = `You generate short copy for a produce listing draft.\nReply JSON only: { "title": string, "description": string }.\n- Title under 60 chars.\n- Description 1-2 sentences.\n- No emojis, no marketing fluff.\n- Do NOT invent certifications (organic) or locations.\n- Mention price only if provided.\n`;
+          const res = await client.chat.completions.create({
+            model: getLLMModel("listings"),
+            messages: [
+              { role: "system", content: COPY_SYSTEM },
+              {
+                role: "user",
+                content: JSON.stringify({
+                  item: itemName,
+                  suggestedPricePerKg: suggestedPrice,
+                  currency: "CAD",
+                  unit: suggestedUnit ?? "kg",
+                }),
+              },
+            ],
+            response_format: { type: "json_object" },
+            max_tokens: 180,
+          });
+          const raw = res.choices[0]?.message?.content;
+          if (raw) {
+            const parsed = JSON.parse(raw) as { title?: string; description?: string };
+            if (typeof parsed.title === "string" && parsed.title.trim()) {
+              title = parsed.title.trim().slice(0, 150);
+            }
+            if (typeof parsed.description === "string" && parsed.description.trim()) {
+              description = parsed.description.trim().slice(0, 500);
+            }
+          }
+        } catch (err) {
+          console.error(
+            "[Listings] LLM copy generation failed, using template:",
+            err instanceof Error ? err.message : String(err)
+          );
+        }
+      }
       const suggestedFields = {
         itemId: match.itemId,
         itemName: match.itemName,

@@ -41,6 +41,44 @@ export class ImageGuardError extends Error {
 }
 
 const itemMatchThreshold = Number(CFG.ITEM_MATCH_THRESHOLD || 0.6);
+const INFOHORT_PRICE_SOURCE = "aafc_infohort_toronto";
+
+function pickBestPriceHint(
+  hints:
+    | Array<{
+        unit: string;
+        suggested: number;
+        currency: string;
+        referencePeriod: string;
+        source: string;
+      }>
+    | undefined
+    | null
+) {
+  const list = (hints || [])
+    .filter((h) => h && typeof h === "object")
+    .map((h) => ({
+      ...h,
+      unit: String(h.unit || "").toLowerCase(),
+      currency: String(h.currency || "CAD").toUpperCase(),
+      source: String(h.source || ""),
+      suggested: Number(h.suggested || 0),
+    }))
+    .filter((h) => Number.isFinite(h.suggested) && h.suggested > 0);
+
+  if (list.length === 0) return null;
+
+  // Prefer daily Infohort-derived hint first, then any kg/CAD hint, else first valid.
+  const infohort = list.find(
+    (h) => h.source === INFOHORT_PRICE_SOURCE && h.unit === "kg" && h.currency === "CAD"
+  );
+  if (infohort) return infohort;
+
+  const kgCad = list.find((h) => h.unit === "kg" && h.currency === "CAD");
+  if (kgCad) return kgCad;
+
+  return list[0] ?? null;
+}
 
 /**
  * Get suggested listing fields from an uploaded image (Azure Vision + produce match).
@@ -95,7 +133,7 @@ export async function getDraftSuggestedFieldsFromImage(
 
   const itemName = match.itemName ?? "produce";
   const suggestedUnit = match.selected?.defaultUnit ?? null;
-  const suggestedPriceHint = match.selected?.priceHints?.[0];
+  const suggestedPriceHint = pickBestPriceHint(match.selected?.priceHints);
   const suggestedPricePerKg =
     suggestedPriceHint && Number.isFinite(suggestedPriceHint.suggested)
       ? suggestedPriceHint.suggested
