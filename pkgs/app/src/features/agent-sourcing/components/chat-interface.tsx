@@ -29,7 +29,6 @@ import { useListingActions, type ParsedSheetLineItem } from "@/hooks/useListingA
 import { InteractiveCheckout, type CartItem, type Product as CheckoutProduct, type ProductUnit } from "@/components/ui/interactive-checkout";
 import { CheckoutForm } from "@/components/ui/checkout-form";
 import { OrderConfirmationCard } from "@/components/ui/order-confirmation-card";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 /** First line of assistant messages that represent a completed mock checkout (used for styling). */
