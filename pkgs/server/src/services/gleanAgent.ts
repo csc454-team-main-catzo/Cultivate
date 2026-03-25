@@ -519,7 +519,7 @@ export async function runGleanAgent(req: GleanAgentRequest): Promise<GleanAgentR
         imageId: req.imageId,
       };
       return {
-        introText: "Here's your draft from the photo. Price is based on Toronto wholesale data. Fill in weight and delivery window, then tap Post.",
+        introText: "Here's your draft from the photo. Price is based on Toronto wholesale data. Double check the details, then tap Post.",
         payload: { type: "inventory_form", draft, userMessage: trimmed },
       };
     }
@@ -534,7 +534,7 @@ export async function runGleanAgent(req: GleanAgentRequest): Promise<GleanAgentR
         imageId: req.imageId,
       };
       return {
-        introText: "Here's your draft from the photo. Price is based on Toronto wholesale data. Fill in weight and delivery window, then tap Post.",
+        introText: "Here's your draft from the photo. Price is based on Toronto wholesale data. Double check the details, then tap Post.",
         payload: { type: "inventory_form", draft, userMessage: trimmed },
       };
     }
