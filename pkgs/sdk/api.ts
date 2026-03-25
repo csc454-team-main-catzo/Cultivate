@@ -72,7 +72,7 @@ export interface CreateListingRequest {
     'price': number;
     'qty': number;
     'unit'?: 'kg' | 'lb' | 'count' | 'bunch';
-    'latLng': Array<number>;
+    'photos'?: Array<{ 'imageId': string }>;
     'expiresAt'?: string | null;
 }
 
