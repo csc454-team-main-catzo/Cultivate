@@ -149,15 +149,11 @@ function normalizePackageWeightKg(
   pkgQty: number | null
 ): number | null {
   if (!pkgWt || pkgWt <= 0) return null;
+  const qty = pkgQty != null && pkgQty > 0 ? pkgQty : 1;
   const u = unit.trim().toUpperCase();
-  if (u === "KG" || u === "KGS") return pkgWt;
-  if (u === "LBS" || u === "LB") return pkgWt * LBS_TO_KG;
-  // AAFC uses "Gr" for grams (e.g. Ctn 12X120 Gr → per-unit grams × count)
-  if (u === "GR" || u === "G" || u === "GMS") {
-    const qty = pkgQty != null && pkgQty > 0 ? pkgQty : 1;
-    const totalGr = pkgWt * qty;
-    return totalGr / 1000;
-  }
+  if (u === "KG" || u === "KGS") return pkgWt * qty;
+  if (u === "LBS" || u === "LB") return pkgWt * qty * LBS_TO_KG;
+  if (u === "GR" || u === "G" || u === "GMS") return (pkgWt * qty) / 1000;
   return null;
 }
 
