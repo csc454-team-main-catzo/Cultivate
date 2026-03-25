@@ -928,18 +928,16 @@ function MessageBubble({
             <div className="rounded-2xl rounded-bl-md border border-emerald-200 bg-emerald-50/90 px-4 py-3 text-sm text-zinc-900 shadow-sm">
               <div className="flex items-start gap-2.5">
                 <PackageCheck className="h-5 w-5 shrink-0 text-emerald-600 mt-0.5" aria-hidden />
-                <div className="min-w-0 flex-1 space-y-3">
+                <div className="min-w-0 flex-1">
                   <p className="whitespace-pre-wrap break-words leading-relaxed">{message.content}</p>
                   {(() => {
                     const postedListingId = listingIdFromPostedMessageContent(message.content);
                     return postedListingId ? (
-                      <div className="flex justify-end">
-                        <Button
-                          asChild
-                          size="sm"
-                          className="bg-emerald-700 text-white hover:bg-emerald-800"
-                        >
-                          <Link to={`/listings/${postedListingId}`}>View listing</Link>
+                      <div className="flex justify-end pt-4">
+                        <Button asChild className={cn(theme.primaryButtonClass)}>
+                          <Link to={`/listings/${postedListingId}`} state={{ from: "chat" }}>
+                            View listing
+                          </Link>
                         </Button>
                       </div>
                     ) : null;
