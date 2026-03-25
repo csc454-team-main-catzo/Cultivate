@@ -15,6 +15,7 @@ import { getTags, type AzureVisionTag } from "../services/visionAzure.js";
 import { evaluateProduceGuard } from "../services/produceGuard.js";
 import { getLLMClient, getLLMModel } from "../services/llmClient.js";
 import { logJson } from "../utils/log.js";
+import { resolveDynamicListingPricePerKg } from "../services/dailyPriceUpdater.js";
 import {
   DraftFromImageResponseSchema,
   DraftFromImageSchema,
@@ -212,7 +213,21 @@ listings.post(
         latLng: user.latLng as [number, number],
         postalCode: user.postalCode,
         createdBy: userId,
+        dynamicPricing:
+          data.type === "supply" ? Boolean(data.dynamicPricing) : false,
       });
+
+      if (
+        listing.type === "supply" &&
+        listing.dynamicPricing &&
+        listing.status === "open"
+      ) {
+        const suggested = await resolveDynamicListingPricePerKg(listing.item);
+        if (suggested != null) {
+          listing.price = suggested;
+          await listing.save();
+        }
+      }
 
       const populated = await Listing.findById(listing._id)
         .populate("createdBy", "name email role")
@@ -775,7 +790,24 @@ listings.patch(
       if (data.description !== undefined) listing.description = data.description;
       if (data.price !== undefined) listing.price = data.price;
       if (data.qty !== undefined) listing.qty = data.qty;
+      if (data.unit !== undefined) listing.unit = data.unit;
       if (data.status !== undefined) listing.status = data.status;
+      if (data.dynamicPricing !== undefined) {
+        listing.dynamicPricing =
+          listing.type === "supply" ? data.dynamicPricing : false;
+      }
+
+      if (
+        listing.type === "supply" &&
+        listing.dynamicPricing &&
+        listing.status === "open"
+      ) {
+        const suggested = await resolveDynamicListingPricePerKg(listing.item);
+        if (suggested != null) {
+          listing.price = suggested;
+        }
+      }
+
       await listing.save();
 
       const populated = await Listing.findById(listing._id)

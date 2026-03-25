@@ -52,6 +52,7 @@ export default function AgentSourcing() {
           price: draft.pricePerKg,
           qty: draft.weightKg,
           unit,
+          ...(draft.dynamicPricing ? { dynamicPricing: true } : {}),
           ...(draft.imageId && { photos: [{ imageId: draft.imageId }] }),
         };
         const created = (await createListing(body)) as { _id: string };

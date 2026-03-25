@@ -22,6 +22,7 @@ interface ListingData {
   latLng: [number, number];
   createdBy: { _id: string };
   status: string;
+  dynamicPricing?: boolean;
 }
 
 export default function EditListing() {
@@ -46,6 +47,7 @@ export default function EditListing() {
   const [price, setPrice] = useState("");
   const [qty, setQty] = useState("");
   const [unit, setUnit] = useState<ListingUnit>("kg");
+  const [dynamicPricing, setDynamicPricing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
@@ -84,6 +86,7 @@ export default function EditListing() {
         setPrice(String(data.price));
         setQty(String(data.qty));
         if (data.unit) setUnit(data.unit);
+        setDynamicPricing(Boolean(data.dynamicPricing));
       } catch {
         setError("Could not load listing.");
       } finally {
@@ -180,6 +183,7 @@ export default function EditListing() {
         price: isNaN(priceNum) || priceNum < 0 ? 0 : priceNum,
         qty: qtyNum,
         unit,
+        ...(listing.type === "supply" ? { dynamicPricing } : {}),
         ...(photos.length > 0 ? { photos } : {}),
       };
 
@@ -371,6 +375,26 @@ export default function EditListing() {
             className="input-field"
           />
         </div>
+        {listing.type === "supply" && (
+          <div className="rounded-lg border border-zinc-200 bg-zinc-50/80 px-4 py-3">
+            <label className="flex items-start gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                className="mt-1 h-4 w-4 rounded border-zinc-300 text-leaf-600 focus:ring-leaf-500"
+                checked={dynamicPricing}
+                onChange={(e) => setDynamicPricing(e.target.checked)}
+              />
+              <span>
+                <span className="block text-sm font-medium text-zinc-800">
+                  Dynamic pricing (Infohort)
+                </span>
+                <span className="block text-xs text-zinc-600 mt-0.5">
+                  When enabled, your price may update with daily Toronto wholesale market data. Leave off to keep the price you set.
+                </span>
+              </span>
+            </label>
+          </div>
+        )}
         <div>
           <label className="block text-sm font-medium text-zinc-700 mb-1">
             Quantity <span className="text-red-500">*</span>

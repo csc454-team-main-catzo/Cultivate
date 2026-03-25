@@ -28,6 +28,8 @@ export interface IGleanInventoryDraftData {
   imageId?: string;
   /** Stable client id for the draft form row; keeps UI state when message _id changes. */
   formInstanceId?: string;
+  /** When true, posted listing may follow daily Infohort price sync. */
+  dynamicPricing?: boolean;
   deliveryWindow?: { startAt: string; endAt: string };
 }
 
@@ -136,6 +138,7 @@ const GleanInventoryDraftSchema = new Schema<IGleanInventoryDraftData>(
     unit: { type: String, required: false },
     imageId: { type: String, required: false },
     formInstanceId: { type: String, required: false },
+    dynamicPricing: { type: Boolean, required: false },
     deliveryWindow: {
       type: new Schema(
         {

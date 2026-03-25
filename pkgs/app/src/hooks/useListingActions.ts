@@ -11,6 +11,8 @@ export interface UpdateListingBody {
   unit?: "kg" | "lb" | "count" | "bunch";
   status?: string;
   photos?: Array<{ imageId: string }>;
+  /** Supply only: when true, daily Infohort sync may update price. */
+  dynamicPricing?: boolean;
 }
 
 export interface CreateListingBody {
@@ -22,6 +24,8 @@ export interface CreateListingBody {
   qty: number;
   unit?: "kg" | "lb" | "count" | "bunch";
   photos?: Array<{ imageId: string }>;
+  /** Supply only: when true, daily Infohort sync may update price. */
+  dynamicPricing?: boolean;
 }
 
 export interface UploadImageResponse {

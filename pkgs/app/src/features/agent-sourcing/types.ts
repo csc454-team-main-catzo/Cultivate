@@ -66,6 +66,8 @@ export interface InventoryDraftData {
    * chat message document id changes after sync/reload.
    */
   formInstanceId?: string;
+  /** When true, daily Toronto wholesale (Infohort) sync may adjust the listing price. */
+  dynamicPricing?: boolean;
 }
 
 /** Returned after posting a listing from a Glean draft; used to append the persisted green confirmation message. */

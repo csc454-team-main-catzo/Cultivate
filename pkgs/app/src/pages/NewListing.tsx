@@ -58,7 +58,9 @@ export default function NewListing() {
   const [generatingDraft, setGeneratingDraft] = useState(false);
   const [draft, setDraft] = useState<DraftFromImageResponse | null>(null);
   const [guardRejection, setGuardRejection] = useState<GuardRejection | null>(null);
+  const [dynamicPricing, setDynamicPricing] = useState(false);
   const imageId = form.photos[0]?.imageId ?? "";
+  const isSupplyListing = user?.role === "farmer";
 
   const canGenerateDraft = Boolean(imageId) && !generatingDraft;
 
@@ -249,6 +251,7 @@ export default function NewListing() {
         qty,
         unit: (form.unit || "kg") as "kg" | "lb" | "count" | "bunch",
         photos: form.photos,
+        ...(type === "supply" && dynamicPricing ? { dynamicPricing: true } : {}),
       });
 
       navigate("/listings");
@@ -531,6 +534,27 @@ export default function NewListing() {
             className="input-field"
           />
         </div>
+
+        {isSupplyListing && (
+          <div className="rounded-lg border border-zinc-200 bg-zinc-50/80 px-4 py-3">
+            <label className="flex items-start gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                className="mt-1 h-4 w-4 rounded border-zinc-300 text-leaf-600 focus:ring-leaf-500"
+                checked={dynamicPricing}
+                onChange={(e) => setDynamicPricing(e.target.checked)}
+              />
+              <span>
+                <span className="block text-sm font-medium text-zinc-800">
+                  Dynamic pricing (Infohort)
+                </span>
+                <span className="block text-xs text-zinc-600 mt-0.5">
+                  When enabled, your price may update with daily Toronto wholesale market data. Leave off to keep the price you set.
+                </span>
+              </span>
+            </label>
+          </div>
+        )}
 
         <p className="text-sm text-zinc-600">
           Listing location uses the postal code in your{" "}

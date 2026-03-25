@@ -41,6 +41,7 @@ export function InventoryDraftCard({
   const [unit, setUnit] = useState<NonNullable<InventoryDraftData["unit"]>>(
     (draft.unit ?? "kg") as NonNullable<InventoryDraftData["unit"]>
   );
+  const [dynamicPricing, setDynamicPricing] = useState(Boolean(draft.dynamicPricing));
 
   useEffect(() => {
     setTitle(draft.title);
@@ -48,6 +49,7 @@ export function InventoryDraftCard({
     setWeight(String(draft.weightKg));
     setPrice(String(draft.pricePerKg));
     setUnit((draft.unit ?? "kg") as NonNullable<InventoryDraftData["unit"]>);
+    setDynamicPricing(Boolean(draft.dynamicPricing));
     // Re-hydrate only when the assistant sends a new inventory card, not when `draft` is re-created each render.
   }, [draftMessageId]); // eslint-disable-line react-hooks/exhaustive-deps -- draft fields read once per new message id
 
@@ -83,6 +85,7 @@ export function InventoryDraftCard({
       weightKg: weightNum,
       pricePerKg: priceNum,
       unit,
+      dynamicPricing,
     });
   }
 
@@ -182,6 +185,24 @@ export function InventoryDraftCard({
                   value={price}
                   onChange={(e) => setPrice(e.target.value)}
                 />
+              </label>
+            </div>
+            <div className="rounded-lg border border-zinc-200 bg-zinc-50/80 px-3 py-2.5">
+              <label className="flex items-start gap-2.5 cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="mt-0.5 h-4 w-4 rounded border-zinc-300 text-zinc-900 focus:ring-zinc-400/30"
+                  checked={dynamicPricing}
+                  onChange={(e) => setDynamicPricing(e.target.checked)}
+                />
+                <span>
+                  <span className="block text-xs font-medium text-zinc-800">
+                    Dynamic pricing (Infohort)
+                  </span>
+                  <span className="block text-[11px] text-zinc-600 mt-0.5 leading-snug">
+                    When on, your price may follow daily Toronto wholesale updates. Off keeps your price as entered.
+                  </span>
+                </span>
               </label>
             </div>
             <Button
