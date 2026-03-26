@@ -90,6 +90,26 @@ export interface Product {
   matchScore?: number;
 }
 
+function normalizeMatchType(raw?: string): string | null {
+  if (!raw) return null;
+  const t = raw.trim().toLowerCase();
+  if (!t) return null;
+  if (t === "exact match" || t === "exact_match") return "exact";
+  if (
+    t === "substitute match" ||
+    t === "substitute_match" ||
+    t === "replacement" ||
+    t === "alternative"
+  ) return "substitute";
+  return t;
+}
+
+function coerceMatchScore(raw?: number): number | null {
+  if (raw == null) return null;
+  const n = Number(raw);
+  return Number.isFinite(n) ? Math.max(0, Math.min(1, n)) : null;
+}
+
 export interface CartItem extends Product {
   /** Quantity always stored in listing (native) units. */
   quantity: number;
@@ -424,20 +444,30 @@ function InteractiveCheckout({
                           <span className="px-2 py-0.5 text-xs rounded-full bg-zinc-100 text-zinc-500 shrink-0">
                             {product.category}
                           </span>
-                          {product.matchType && (
-                            <span
-                              className={cn(
-                                "px-2 py-0.5 text-xs rounded-full shrink-0 font-medium",
-                                product.matchType.toLowerCase() === "exact"
-                                  ? "bg-emerald-100 text-emerald-700"
-                                  : "bg-amber-100 text-amber-700",
-                              )}
-                            >
-                              {product.matchType.toLowerCase() === "exact"
-                                ? "Exact match"
-                                : `Substitute · ${Math.round((product.matchScore ?? 0) * 100)}%`}
-                            </span>
-                          )}
+                          {(() => {
+                            const type = normalizeMatchType(product.matchType);
+                            const score = coerceMatchScore(product.matchScore);
+                            const hasBadge = Boolean(type) || score != null;
+                            if (!hasBadge) return null;
+
+                            const isExact = type === "exact" && (score == null || score >= 0.999);
+                            const percent = score == null ? null : Math.round(score * 100);
+
+                            return (
+                              <span
+                                className={cn(
+                                  "px-2 py-0.5 text-xs rounded-full shrink-0 font-medium",
+                                  isExact
+                                    ? "bg-emerald-100 text-emerald-700"
+                                    : "bg-amber-100 text-amber-700",
+                                )}
+                              >
+                                {isExact
+                                  ? "Exact match"
+                                  : `Substitute${percent != null ? ` · ${percent}%` : ""}`}
+                              </span>
+                            );
+                          })()}
                         </div>
                         <div className="flex flex-col gap-0.5 text-sm text-zinc-500">
                           <ProductPriceLine product={product} selectedUnit={getSelectedUnit(product)} />
