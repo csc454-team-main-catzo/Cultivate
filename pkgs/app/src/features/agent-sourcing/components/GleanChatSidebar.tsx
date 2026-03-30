@@ -90,7 +90,9 @@ export function GleanChatSidebar({
     const date = new Date(dateStr);
     const now = new Date();
     const diff = now.getTime() - date.getTime();
-    const days = Math.floor(diff / 86400000);
+    // Server/client clock skew can make timestamps slightly "in the future"; floor of a
+    // negative diff / 86400000 is -1, which incorrectly showed "-1d ago".
+    const days = Math.max(0, Math.floor(diff / 86400000));
     if (days === 0) return "Today";
     if (days === 1) return "Yesterday";
     if (days < 7) return `${days}d ago`;
